@@ -330,31 +330,87 @@ def get_channel_videos(youtube, max_results=10):
     if not youtube:
         return []
     
+    # Debug info
+    st.write("### Debug Information:")
+    
+    # Get API key info
+    api_key = os.environ.get("YOUTUBE_API_KEY", "")
+    if not api_key and hasattr(st, 'secrets') and 'YOUTUBE_API_KEY' in st.secrets:
+        api_key = st.secrets["YOUTUBE_API_KEY"]
+    
+    if api_key:
+        masked_key = f"...{api_key[-4:]}" if len(api_key) > 4 else "[empty]"
+        st.write(f"- Using API key ending with: {masked_key}")
+    else:
+        st.write("- API key not found")
+    
+    # Get channel ID
+    channel_id = get_channel_id()
+    st.write(f"- Using channel ID: {channel_id}")
+    
     try:
-        # Get channel ID from settings
-        channel_id = get_channel_id()
+        # Try both methods to get channel videos
         
-        # Get uploads playlist ID
+        # Method 1: Direct channel ID
+        st.write("- Trying direct channel ID method...")
         channel_response = youtube.channels().list(
             part="contentDetails",
             id=channel_id
         ).execute()
         
         if not channel_response.get("items"):
+            st.write("- No channel found with this ID, trying username method...")
+            # Method 2: Try using as username
+            channel_response = youtube.channels().list(
+                part="contentDetails",
+                forUsername=channel_id
+            ).execute()
+        
+        if not channel_response.get("items"):
+            st.write("- No channel found with this ID or username")
+            # Method 3: Try search
+            st.write("- Trying search method...")
+            search_response = youtube.search().list(
+                q=channel_id,
+                part="snippet",
+                type="channel",
+                maxResults=1
+            ).execute()
+            
+            if not search_response.get("items"):
+                st.write("- No channel found via search")
+                return []
+                
+            found_channel_id = search_response["items"][0]["id"]["channelId"]
+            st.write(f"- Found channel via search: {found_channel_id}")
+            
+            channel_response = youtube.channels().list(
+                part="contentDetails",
+                id=found_channel_id
+            ).execute()
+        
+        if not channel_response.get("items"):
+            st.write("- Still no channel found after all attempts")
             return []
             
+        st.write("- Channel found! Getting uploads playlist...")
         uploads_playlist_id = channel_response["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
+        st.write(f"- Uploads playlist ID: {uploads_playlist_id}")
         
         # Get videos from uploads playlist
+        st.write("- Fetching videos from uploads playlist...")
         playlist_response = youtube.playlistItems().list(
             part="snippet",
             playlistId=uploads_playlist_id,
             maxResults=max_results
         ).execute()
         
-        return playlist_response.get("items", [])
+        items = playlist_response.get("items", [])
+        st.write(f"- Found {len(items)} videos")
+        return items
     except HttpError as e:
         st.error(f"An error occurred: {e}")
+        st.write(f"- Full error details: {str(e)}")
         return []
 
 # Main application
