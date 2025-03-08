@@ -287,7 +287,7 @@ def get_featured_playlists():
 
 # Function to get YouTube channel ID from settings
 def get_channel_id():
-    return "ClassicsAI"  # Use the channel username, not ID
+    return "UCjCP9oogiGVAt--p12gAKwQ"  # Replace with the actual channel ID
 
 # Function to search ClassicsAI YouTube channel
 def search_channel(youtube, query, max_results=10):
@@ -318,50 +318,11 @@ def get_channel_videos(youtube, max_results=10):
 
     st.write("### Debug Information:")
 
-    channel_identifier = get_channel_id()
-    st.write(f"- Channel identifier: {channel_identifier}")
+    channel_id = get_channel_id()
+    st.write(f"- Using channel ID: {channel_id}")
 
     try:
-        # Determine if identifier is username or channel ID
-        if not channel_identifier.startswith("UC"):
-            st.write("- Identifier is a username, fetching channel ID...")
-            channel_response = youtube.channels().list(
-                part="id",
-                forUsername=channel_identifier
-            ).execute()
-
-            if channel_response.get("items"):
-                channel_id = channel_response["items"][0]["id"]
-                st.write(f"- Found channel ID via username: {channel_id}")
-            else:
-                st.write("- Username lookup failed, trying search method...")
-                search_response = youtube.search().list(
-                    part="snippet",
-                    q=channel_identifier,
-                    type="channel",
-                    maxResults=5
-                ).execute()
-
-                if search_response.get("items"):
-                    # Select the correct channel based on exact match
-                    channel_id = None
-                    for item in search_response["items"]:
-                        title = item["snippet"]["title"]
-                        if title.lower() == channel_identifier.lower():
-                            channel_id = item["id"]["channelId"]
-                            st.write(f"- Found exact match channel ID via search: {channel_id}")
-                            break
-                    if not channel_id:
-                        channel_id = search_response["items"][0]["id"]["channelId"]
-                        st.write(f"- No exact match found, using first result channel ID: {channel_id}")
-                else:
-                    st.error("Channel not found via search.")
-                    return []
-        else:
-            channel_id = channel_identifier
-            st.write(f"- Using provided channel ID: {channel_id}")
-
-        # Fetch videos from the channel
+        # Fetch videos from the channel using the channel ID
         st.write("- Fetching videos from channel...")
         search_response = youtube.search().list(
             part="snippet",
