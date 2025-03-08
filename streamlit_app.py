@@ -287,8 +287,7 @@ def get_featured_playlists():
 
 # Function to get YouTube channel ID from settings
 def get_channel_id():
-    # Use ClassicsAI channel handle
-    return "ClassicsAI"
+    return "ClassicsAI"  # Use the channel username, not ID
 
 # Function to search ClassicsAI YouTube channel
 def search_channel(youtube, query, max_results=10):
@@ -331,57 +330,87 @@ def get_channel_videos(youtube, max_results=10):
     else:
         st.write("- API key not found")
     
+    # Get channel name/ID
+    channel_name = get_channel_id()
+    st.write(f"- Using channel name: {channel_name}")
+    
     try:
-        # Try with a more specific search query for ClassicsAI
-        st.write("- Searching for 'ClassicsAI AI-generated classical music'")
-        
-        # Search for the specific channel with more context
-        search_response = youtube.search().list(
-            q="ClassicsAI AI-generated classical music",
-            part="snippet",
-            type="channel",
-            maxResults=5  # Get more results to find the right one
-        ).execute()
-        
-        # Look through results for the correct channel
-        channel_id = None
-        if search_response.get("items"):
-            st.write(f"- Found {len(search_response['items'])} channel results")
+        # First get the channel ID from the username if needed
+        if not channel_name.startswith("UC"):
+            st.write("- Channel name is not an ID, looking up ID...")
             
-            # Display all found channels for debugging
-            for i, item in enumerate(search_response["items"]):
-                channel_title = item["snippet"]["title"]
-                channel_description = item["snippet"]["description"]
-                found_id = item["id"]["channelId"]
-                st.write(f"- Channel {i+1}: {channel_title} (ID: {found_id})")
-                st.write(f"  Description: {channel_description[:100]}...")
+            # Try to get channel by username
+            try:
+                st.write(f"- Trying to get channel by username: {channel_name}")
+                channel_response = youtube.channels().list(
+                    part="id",
+                    forUsername=channel_name
+                ).execute()
                 
-                # Look for the correct channel based on title/description
-                if "classical" in channel_title.lower() or "classical" in channel_description.lower():
-                    channel_id = found_id
-                    st.write(f"- Selected channel: {channel_title}")
-                    break
+                if channel_response.get("items"):
+                    channel_id = channel_response["items"][0]["id"]
+                    st.write(f"- Found channel ID: {channel_id}")
+                else:
+                    st.write("- No channel found with this username, trying search...")
+                    # Try search instead
+                    search_response = youtube.search().list(
+                        part="snippet",
+                        q=channel_name,
+                        type="channel",
+                        maxResults=1
+                    ).execute()
+                    
+                    if search_response.get("items"):
+                        channel_id = search_response["items"][0]["id"]["channelId"]
+                        st.write(f"- Found channel ID via search: {channel_id}")
+                    else:
+                        st.write(f"- Channel '{channel_name}' not found")
+                        return []
+            except Exception as e:
+                st.write(f"- Error looking up channel: {str(e)}")
+                # Try direct search as fallback
+                st.write("- Trying direct search for videos...")
+                search_response = youtube.search().list(
+                    part="snippet",
+                    q=f"{channel_name} AI classical music",
+                    maxResults=max_results,
+                    type="video"
+                ).execute()
+                
+                items = search_response.get("items", [])
+                
+                # Transform search results
+                transformed_items = []
+                for item in items:
+                    transformed_item = {
+                        "snippet": {
+                            "resourceId": {"videoId": item["id"]["videoId"]},
+                            "title": item["snippet"]["title"],
+                            "thumbnails": item["snippet"]["thumbnails"],
+                            "publishedAt": item["snippet"]["publishedAt"]
+                        }
+                    }
+                    transformed_items.append(transformed_item)
+                
+                st.write(f"- Found {len(transformed_items)} videos via direct search")
+                return transformed_items
+        else:
+            channel_id = channel_name
+            st.write(f"- Using provided channel ID: {channel_id}")
         
-        # If no channel found, try with hardcoded ID
-        if not channel_id:
-            # Try with a hardcoded ID for ClassicsAI
-            # This is a placeholder - replace with the correct ID if you know it
-            channel_id = "UCyQGLLqZwKLIkFNBAVnM9Gg"
-            st.write(f"- Using fallback channel ID: {channel_id}")
-        
-        # Use search endpoint to get videos from the channel
-        st.write("- Using search to get videos...")
-        video_search = youtube.search().list(
-            channelId=channel_id,
+        # Get videos from the channel
+        st.write("- Getting videos from channel...")
+        search_response = youtube.search().list(
             part="snippet",
-            order="date",  # Get most recent videos
+            channelId=channel_id,
+            maxResults=max_results,
             type="video",
-            maxResults=max_results
+            order="date"
         ).execute()
         
-        items = video_search.get("items", [])
+        items = search_response.get("items", [])
         
-        # Transform search results to match the format expected by the display code
+        # Transform search results
         transformed_items = []
         for item in items:
             transformed_item = {
