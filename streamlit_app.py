@@ -122,7 +122,6 @@ def create_decorative_header():
     st.markdown(header_html, unsafe_allow_html=True)
 
 # Authentication
-@st.cache_resource
 def get_authenticator():
     if os.path.exists("config.yaml"):
         with open("config.yaml") as file:
@@ -141,7 +140,6 @@ def get_authenticator():
         return None
 
 # YouTube API setup
-@st.cache_resource
 def get_youtube_api():
     try:
         api_key = os.environ.get("YOUTUBE_API_KEY", "YOUR_API_KEY")  # Replace with your API key or use environment variable
