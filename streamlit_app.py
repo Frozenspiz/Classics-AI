@@ -332,24 +332,42 @@ def get_channel_videos(youtube, max_results=10):
         st.write("- API key not found")
     
     try:
-        # Try to find ClassicsAI channel by handle
-        channel_handle = "ClassicsAI"
-        st.write(f"- Looking for channel with handle: @{channel_handle}")
+        # Try with a more specific search query for ClassicsAI
+        st.write("- Searching for 'ClassicsAI AI-generated classical music'")
         
-        # First try to search for the channel
+        # Search for the specific channel with more context
         search_response = youtube.search().list(
-            q=channel_handle,
+            q="ClassicsAI AI-generated classical music",
             part="snippet",
             type="channel",
-            maxResults=1
+            maxResults=5  # Get more results to find the right one
         ).execute()
         
-        if not search_response.get("items"):
-            st.write("- No channel found with this handle")
-            return []
+        # Look through results for the correct channel
+        channel_id = None
+        if search_response.get("items"):
+            st.write(f"- Found {len(search_response['items'])} channel results")
             
-        channel_id = search_response["items"][0]["id"]["channelId"]
-        st.write(f"- Found channel! ID: {channel_id}")
+            # Display all found channels for debugging
+            for i, item in enumerate(search_response["items"]):
+                channel_title = item["snippet"]["title"]
+                channel_description = item["snippet"]["description"]
+                found_id = item["id"]["channelId"]
+                st.write(f"- Channel {i+1}: {channel_title} (ID: {found_id})")
+                st.write(f"  Description: {channel_description[:100]}...")
+                
+                # Look for the correct channel based on title/description
+                if "classical" in channel_title.lower() or "classical" in channel_description.lower():
+                    channel_id = found_id
+                    st.write(f"- Selected channel: {channel_title}")
+                    break
+        
+        # If no channel found, try with hardcoded ID
+        if not channel_id:
+            # Try with a hardcoded ID for ClassicsAI
+            # This is a placeholder - replace with the correct ID if you know it
+            channel_id = "UCyQGLLqZwKLIkFNBAVnM9Gg"
+            st.write(f"- Using fallback channel ID: {channel_id}")
         
         # Use search endpoint to get videos from the channel
         st.write("- Using search to get videos...")
