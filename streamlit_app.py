@@ -285,32 +285,6 @@ def get_featured_playlists():
         ]
     }
 
-# Function to get YouTube channel ID from settings
-def get_channel_id():
-    return "ClassicsAI"  # Use the channel username, not ID
-
-# Function to search ClassicsAI YouTube channel
-def search_channel(youtube, query, max_results=10):
-    if not youtube:
-        return []
-    
-    try:
-        # Get channel ID from settings
-        channel_id = get_channel_id()
-        
-        search_response = youtube.search().list(
-            q=query,
-            channelId=channel_id,
-            part="snippet",
-            maxResults=max_results,
-            type="video"
-        ).execute()
-        
-        return search_response.get("items", [])
-    except HttpError as e:
-        st.error(f"An error occurred: {e}")
-        return []
-
 # Function to get channel videos
 def get_channel_videos(youtube, max_results=10):
     if not youtube:
@@ -319,109 +293,47 @@ def get_channel_videos(youtube, max_results=10):
     # Debug info
     st.write("### Debug Information:")
     
-    # Get API key info
-    api_key = os.environ.get("YOUTUBE_API_KEY", "")
-    if not api_key and hasattr(st, 'secrets') and 'YOUTUBE_API_KEY' in st.secrets:
-        api_key = st.secrets["YOUTUBE_API_KEY"]
+    # Hardcoded list of ClassicsAI video IDs from your featured playlists
+    video_ids = [
+        "xVphVzGIcpY",  # Beethoven - New Piano Concerto 30
+        "pJTY7keAUdA",  # Beethoven - New Piano Concerto 32
+        "zj_-_Oh113Q",  # Beethoven - New Piano Concerto 37
+        "sM8X93lJUOg",  # Beethoven - New Piano Concerto 40
+        "36jdYoQkjek",  # Beethoven - New Piano Concerto 41
+        "x1j0ylFzIMU",  # Beethoven - New Piano Concerto 42
+        "-n4TGb1HrBc",  # Beethoven - New Piano Concerto 43
+        "TRUr9uotKA0",  # Beethoven - New Piano Concerto 25
+        "-UCvjD2bCks",  # Beethoven - New Piano Concerto 23
+        "p5iCHb3Axbc",  # Beethoven - New Violin Concerto 17
+        "4VNfql1DfqM"   # Beethoven - New Violin Concerto 20
+    ]
     
-    if api_key:
-        masked_key = f"...{api_key[-4:]}" if len(api_key) > 4 else "[empty]"
-        st.write(f"- Using API key ending with: {masked_key}")
-    else:
-        st.write("- API key not found")
-    
-    # Get channel name/ID
-    channel_name = get_channel_id()
-    st.write(f"- Using channel name: {channel_name}")
+    st.write(f"- Using {len(video_ids)} hardcoded ClassicsAI video IDs")
     
     try:
-        # First get the channel ID from the username if needed
-        if not channel_name.startswith("UC"):
-            st.write("- Channel name is not an ID, looking up ID...")
-            
-            # Try to get channel by username
+        # Get video details for each ID
+        transformed_items = []
+        for video_id in video_ids[:max_results]:
             try:
-                st.write(f"- Trying to get channel by username: {channel_name}")
-                channel_response = youtube.channels().list(
-                    part="id",
-                    forUsername=channel_name
-                ).execute()
-                
-                if channel_response.get("items"):
-                    channel_id = channel_response["items"][0]["id"]
-                    st.write(f"- Found channel ID: {channel_id}")
-                else:
-                    st.write("- No channel found with this username, trying search...")
-                    # Try search instead
-                    search_response = youtube.search().list(
-                        part="snippet",
-                        q=channel_name,
-                        type="channel",
-                        maxResults=1
-                    ).execute()
-                    
-                    if search_response.get("items"):
-                        channel_id = search_response["items"][0]["id"]["channelId"]
-                        st.write(f"- Found channel ID via search: {channel_id}")
-                    else:
-                        st.write(f"- Channel '{channel_name}' not found")
-                        return []
-            except Exception as e:
-                st.write(f"- Error looking up channel: {str(e)}")
-                # Try direct search as fallback
-                st.write("- Trying direct search for videos...")
-                search_response = youtube.search().list(
+                video_response = youtube.videos().list(
                     part="snippet",
-                    q=f"{channel_name} AI classical music",
-                    maxResults=max_results,
-                    type="video"
+                    id=video_id
                 ).execute()
                 
-                items = search_response.get("items", [])
-                
-                # Transform search results
-                transformed_items = []
-                for item in items:
+                if video_response.get("items"):
+                    video = video_response["items"][0]
                     transformed_item = {
                         "snippet": {
-                            "resourceId": {"videoId": item["id"]["videoId"]},
-                            "title": item["snippet"]["title"],
-                            "thumbnails": item["snippet"]["thumbnails"],
-                            "publishedAt": item["snippet"]["publishedAt"]
+                            "resourceId": {"videoId": video_id},
+                            "title": video["snippet"]["title"],
+                            "thumbnails": video["snippet"]["thumbnails"],
+                            "publishedAt": video["snippet"]["publishedAt"]
                         }
                     }
                     transformed_items.append(transformed_item)
-                
-                st.write(f"- Found {len(transformed_items)} videos via direct search")
-                return transformed_items
-        else:
-            channel_id = channel_name
-            st.write(f"- Using provided channel ID: {channel_id}")
-        
-        # Get videos from the channel
-        st.write("- Getting videos from channel...")
-        search_response = youtube.search().list(
-            part="snippet",
-            channelId=channel_id,
-            maxResults=max_results,
-            type="video",
-            order="date"
-        ).execute()
-        
-        items = search_response.get("items", [])
-        
-        # Transform search results
-        transformed_items = []
-        for item in items:
-            transformed_item = {
-                "snippet": {
-                    "resourceId": {"videoId": item["id"]["videoId"]},
-                    "title": item["snippet"]["title"],
-                    "thumbnails": item["snippet"]["thumbnails"],
-                    "publishedAt": item["snippet"]["publishedAt"]
-                }
-            }
-            transformed_items.append(transformed_item)
+            except Exception as e:
+                st.write(f"- Error getting video {video_id}: {str(e)}")
+                continue
         
         st.write(f"- Found {len(transformed_items)} videos")
         return transformed_items
@@ -793,7 +705,7 @@ def main():
                 search_query = st.text_input("Search for videos", key="search_query")
                 
                 if st.button("Search") and search_query:
-                    search_results = search_channel(youtube, search_query)
+                    search_results = get_channel_videos(youtube, max_results=10)
                     
                     if search_results:
                         st.subheader("Search Results")
