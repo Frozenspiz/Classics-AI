@@ -183,7 +183,30 @@ def get_authenticator():
 # YouTube API setup
 def get_youtube_api():
     try:
-        api_key = os.environ.get("YOUTUBE_API_KEY", "YOUR_API_KEY")  # Replace with your API key or use environment variable
+        # Try to get API key from environment variable
+        api_key = os.environ.get("YOUTUBE_API_KEY")
+        
+        # If not found in environment, check Streamlit secrets
+        if not api_key and hasattr(st, 'secrets') and 'YOUTUBE_API_KEY' in st.secrets:
+            api_key = st.secrets["YOUTUBE_API_KEY"]
+            
+        # If still not found, show a clear error message
+        if not api_key:
+            st.error("""
+            YouTube API key not found. Please set up your API key using one of these methods:
+            
+            1. Set an environment variable named YOUTUBE_API_KEY
+            2. Add it to your Streamlit secrets.toml file
+            3. Deploy to Streamlit Cloud and add YOUTUBE_API_KEY to your app secrets
+            
+            To get a YouTube API key:
+            1. Go to https://console.cloud.google.com/
+            2. Create a project
+            3. Enable the YouTube Data API v3
+            4. Create an API key
+            """)
+            return None
+            
         youtube = build("youtube", "v3", developerKey=api_key)
         return youtube
     except Exception as e:
@@ -262,14 +285,32 @@ def get_featured_playlists():
         ]
     }
 
+# Function to get YouTube channel ID from settings
+def get_channel_id():
+    # Default channel ID
+    default_id = "UCyQGLLqZwKLIkFNBAVnM9Gg"  # ClassicsAI channel ID
+    
+    # Try to get from environment variable
+    channel_id = os.environ.get("YOUTUBE_CHANNEL_ID")
+    
+    # If not found in environment, check Streamlit secrets
+    if not channel_id and hasattr(st, 'secrets') and 'YOUTUBE_CHANNEL_ID' in st.secrets:
+        channel_id = st.secrets["YOUTUBE_CHANNEL_ID"]
+    
+    # If still not found, use default
+    if not channel_id:
+        channel_id = default_id
+        
+    return channel_id
+
 # Function to search ClassicsAI YouTube channel
 def search_channel(youtube, query, max_results=10):
     if not youtube:
         return []
     
     try:
-        # ClassicsAI channel ID - replace with your actual channel ID
-        channel_id = "UCyQGLLqZwKLIkFNBAVnM9Gg"  # Replace with your channel ID
+        # Get channel ID from settings
+        channel_id = get_channel_id()
         
         search_response = youtube.search().list(
             q=query,
@@ -290,8 +331,8 @@ def get_channel_videos(youtube, max_results=10):
         return []
     
     try:
-        # ClassicsAI channel ID - replace with your actual channel ID
-        channel_id = "UCyQGLLqZwKLIkFNBAVnM9Gg"  # Replace with your channel ID
+        # Get channel ID from settings
+        channel_id = get_channel_id()
         
         # Get uploads playlist ID
         channel_response = youtube.channels().list(
