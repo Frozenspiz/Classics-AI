@@ -121,6 +121,47 @@ def create_decorative_header():
     """
     st.markdown(header_html, unsafe_allow_html=True)
 
+# Authentication Helper Functions
+def save_config(config):
+    """Save updated config to yaml file"""
+    with open("config.yaml", 'w') as file:
+        yaml.dump(config, file, default_flow_style=False)
+
+def register_user(username, name, email, password):
+    """Register a new user and add to config.yaml"""
+    if os.path.exists("config.yaml"):
+        with open("config.yaml") as file:
+            config = yaml.load(file, Loader=SafeLoader)
+        
+        # Check if username already exists
+        if username in config["credentials"]["usernames"]:
+            return False, "Username already exists"
+        
+        # Check if email already exists
+        for user_data in config["credentials"]["usernames"].values():
+            if user_data["email"] == email:
+                return False, "Email already exists"
+        
+        # Hash the password
+        hashed_password = stauth.Hasher([password]).generate()[0]
+        
+        # Add the new user
+        config["credentials"]["usernames"][username] = {
+            "email": email,
+            "name": name,
+            "password": hashed_password
+        }
+        
+        # Add to preauthorized emails if not already there
+        if email not in config["preauthorized"]["emails"]:
+            config["preauthorized"]["emails"].append(email)
+        
+        # Save updated config
+        save_config(config)
+        return True, "Registration successful"
+    else:
+        return False, "Configuration file not found"
+
 # Authentication
 def get_authenticator():
     if os.path.exists("config.yaml"):
@@ -306,14 +347,90 @@ def main():
         
         # Registration section
         st.subheader("Don't have an account?")
-        st.info("Contact the administrator to create an account for you.")
+        
+        # Toggle between login and registration
+        if "show_register" not in st.session_state:
+            st.session_state.show_register = False
+            
+        if st.button("Register a new account" if not st.session_state.show_register else "Back to login"):
+            st.session_state.show_register = not st.session_state.show_register
+            st.experimental_rerun()
+            
+        if st.session_state.show_register:
+            with st.form("registration_form"):
+                st.subheader("Create a New Account")
+                
+                reg_username = st.text_input("Username", key="reg_username")
+                reg_name = st.text_input("Full Name", key="reg_name")
+                reg_email = st.text_input("Email", key="reg_email")
+                reg_password = st.text_input("Password", type="password", key="reg_password")
+                reg_password2 = st.text_input("Confirm Password", type="password", key="reg_password2")
+                
+                submit = st.form_submit_button("Register")
+                
+                if submit:
+                    if not reg_username or not reg_name or not reg_email or not reg_password:
+                        st.error("All fields are required")
+                    elif not re.match(r"[^@]+@[^@]+\.[^@]+", reg_email):
+                        st.error("Please enter a valid email address")
+                    elif len(reg_password) < 6:
+                        st.error("Password must be at least 6 characters long")
+                    elif reg_password != reg_password2:
+                        st.error("Passwords do not match")
+                    else:
+                        success, message = register_user(reg_username, reg_name, reg_email, reg_password)
+                        if success:
+                            st.success(message)
+                            st.info("You can now log in with your new account")
+                            st.session_state.show_register = False
+                            st.experimental_rerun()
+                        else:
+                            st.error(message)
         
     elif authentication_status == None:
         st.warning("Please enter your username and password")
         
         # Registration section
         st.subheader("Don't have an account?")
-        st.info("Contact the administrator to create an account for you.")
+        
+        # Toggle between login and registration
+        if "show_register" not in st.session_state:
+            st.session_state.show_register = False
+            
+        if st.button("Register a new account" if not st.session_state.show_register else "Back to login"):
+            st.session_state.show_register = not st.session_state.show_register
+            st.experimental_rerun()
+            
+        if st.session_state.show_register:
+            with st.form("registration_form"):
+                st.subheader("Create a New Account")
+                
+                reg_username = st.text_input("Username", key="reg_username")
+                reg_name = st.text_input("Full Name", key="reg_name")
+                reg_email = st.text_input("Email", key="reg_email")
+                reg_password = st.text_input("Password", type="password", key="reg_password")
+                reg_password2 = st.text_input("Confirm Password", type="password", key="reg_password2")
+                
+                submit = st.form_submit_button("Register")
+                
+                if submit:
+                    if not reg_username or not reg_name or not reg_email or not reg_password:
+                        st.error("All fields are required")
+                    elif not re.match(r"[^@]+@[^@]+\.[^@]+", reg_email):
+                        st.error("Please enter a valid email address")
+                    elif len(reg_password) < 6:
+                        st.error("Password must be at least 6 characters long")
+                    elif reg_password != reg_password2:
+                        st.error("Passwords do not match")
+                    else:
+                        success, message = register_user(reg_username, reg_name, reg_email, reg_password)
+                        if success:
+                            st.success(message)
+                            st.info("You can now log in with your new account")
+                            st.session_state.show_register = False
+                            st.experimental_rerun()
+                        else:
+                            st.error(message)
         
     elif authentication_status:
         # Sidebar
