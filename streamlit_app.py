@@ -312,27 +312,25 @@ def search_channel(youtube, query, max_results=10):
         return []
 
 # Function to get channel videos
-def get_channel_videos(youtube, max_results=10):
+def get_channel_videos(youtube, max_results=10, page_token=None):
     if not youtube:
-        return []
-
-    st.write("### Debug Information:")
+        return [], None
 
     channel_id = get_channel_id()
-    st.write(f"- Using channel ID: {channel_id}")
 
     try:
         # Fetch videos from the channel using the channel ID
-        st.write("- Fetching videos from channel...")
         search_response = youtube.search().list(
             part="snippet",
             channelId=channel_id,
             maxResults=max_results,
             type="video",
-            order="date"
+            order="date",
+            pageToken=page_token
         ).execute()
 
         items = search_response.get("items", [])
+        next_page_token = search_response.get("nextPageToken")
 
         # Transform search results
         transformed_items = []
@@ -347,12 +345,11 @@ def get_channel_videos(youtube, max_results=10):
             }
             transformed_items.append(transformed_item)
 
-        st.write(f"- Found {len(transformed_items)} videos")
-        return transformed_items
+        return transformed_items, next_page_token
 
     except HttpError as e:
         st.error(f"An error occurred: {e}")
-        return []
+        return [], None
 
 # Main application
 def main():
@@ -645,9 +642,13 @@ def main():
             
             youtube = get_youtube_api()
             if youtube:
+                # Initialize pagination
+                if "channel_page_token" not in st.session_state:
+                    st.session_state.channel_page_token = None
+
                 # Get channel videos
-                channel_videos = get_channel_videos(youtube)
-                
+                channel_videos, next_page_token = get_channel_videos(youtube, page_token=st.session_state.channel_page_token)
+
                 if channel_videos:
                     for i, item in enumerate(channel_videos):
                         video = item["snippet"]
@@ -683,6 +684,12 @@ def main():
                         
                         st.markdown("---")
                     
+                    # Pagination controls
+                    if next_page_token:
+                        if st.button("Load More"):
+                            st.session_state.channel_page_token = next_page_token
+                            st.rerun()
+
                     # Dialog for adding to playlist
                     if "show_add_dialog" in st.session_state and st.session_state.show_add_dialog:
                         with st.form("add_to_playlist_form"):
