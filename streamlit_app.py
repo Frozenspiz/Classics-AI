@@ -287,7 +287,7 @@ def get_featured_playlists():
 
 # Function to get YouTube channel ID from settings
 def get_channel_id():
-    return "UCjCP9oogiGVAt--p12gAKwQ"  # Replace with the actual channel ID
+    return "UCMCX1aTQvca5zYHGRYnmgXw"  # Correct channel ID for ClassicsAI
 
 # Function to search ClassicsAI YouTube channel
 def search_channel(youtube, query, max_results=10):
@@ -658,7 +658,7 @@ def main():
                         
                         col1, col2 = st.columns([1, 3])
                         with col1:
-                            st.image(thumbnail, use_column_width=True)
+                            st.image(thumbnail, use_container_width=True)
                         with col2:
                             st.markdown(f"**{title}**")
                             st.write(f"Published: {published_at}")
@@ -731,7 +731,7 @@ def main():
                             
                             col1, col2 = st.columns([1, 3])
                             with col1:
-                                st.image(thumbnail, use_column_width=True)
+                                st.image(thumbnail, use_container_width=True)
                             with col2:
                                 st.markdown(f"**{title}**")
                                 st.write(description[:100] + "..." if len(description) > 100 else description)
