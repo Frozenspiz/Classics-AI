@@ -1,0 +1,13 @@
+credentials:
+  usernames:
+    admin:
+      email: admin@classicsai.com
+      name: Admin
+      password: $2b$12$qJxxKtQWkISRZP/6yCDDDuqw1lfEDXmX.I/YMZJHjK.qe1f1XpXPK # Password: admin123
+cookie:
+  expiry_days: 30
+  key: classicsai_cookie
+  name: classicsai_auth
+preauthorized:
+  emails:
+  - admin@classicsai.com 
