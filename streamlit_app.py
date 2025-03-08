@@ -336,16 +336,48 @@ def get_channel_videos(youtube, max_results=10):
     st.write(f"- Using channel ID: {channel_id}")
     
     try:
-        # Try both methods to get channel videos
-        
         # Method 1: Direct channel ID
         st.write("- Trying direct channel ID method...")
         channel_response = youtube.channels().list(
-            part="contentDetails",
+            part="snippet",
             id=channel_id
         ).execute()
         
         if not channel_response.get("items"):
+            st.write("- No channel found with this ID")
+            return []
+            
+        st.write("- Channel found! Using search to get videos...")
+        
+        # Use search endpoint to get videos from the channel
+        search_response = youtube.search().list(
+            channelId=channel_id,
+            part="snippet",
+            order="date",  # Get most recent videos
+            type="video",
+            maxResults=max_results
+        ).execute()
+        
+        items = search_response.get("items", [])
+        
+        # Transform search results to match the format expected by the display code
+        transformed_items = []
+        for item in items:
+            transformed_item = {
+                "snippet": {
+                    "resourceId": {"videoId": item["id"]["videoId"]},
+                    "title": item["snippet"]["title"],
+                    "thumbnails": item["snippet"]["thumbnails"],
+                    "publishedAt": item["snippet"]["publishedAt"]
+                }
+            }
+            transformed_items.append(transformed_item)
+        
+        st.write(f"- Found {len(transformed_items)} videos")
+        return transformed_items
+    except HttpError as e:
+        st.error(f"An error occurred: {e}")
+        st.write(f"- Full error details: {str(e)}")
             st.write("- No channel found with this ID, trying username method...")
             # Method 2: Try using as username
             channel_response = youtube.channels().list(
