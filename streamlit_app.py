@@ -354,7 +354,7 @@ def main():
             
         if st.button("Register a new account" if not st.session_state.show_register else "Back to login"):
             st.session_state.show_register = not st.session_state.show_register
-            st.experimental_rerun()
+            st.rerun()
             
         if st.session_state.show_register:
             with st.form("registration_form"):
@@ -383,7 +383,7 @@ def main():
                             st.success(message)
                             st.info("You can now log in with your new account")
                             st.session_state.show_register = False
-                            st.experimental_rerun()
+                            st.rerun()
                         else:
                             st.error(message)
         
@@ -399,7 +399,7 @@ def main():
             
         if st.button("Register a new account" if not st.session_state.show_register else "Back to login"):
             st.session_state.show_register = not st.session_state.show_register
-            st.experimental_rerun()
+            st.rerun()
             
         if st.session_state.show_register:
             with st.form("registration_form"):
@@ -428,7 +428,7 @@ def main():
                             st.success(message)
                             st.info("You can now log in with your new account")
                             st.session_state.show_register = False
-                            st.experimental_rerun()
+                            st.rerun()
                         else:
                             st.error(message)
         
@@ -451,13 +451,13 @@ def main():
                             video_id = extract_video_id(track["url"])
                             st.session_state.current_video_id = video_id
                             st.session_state.current_video_title = track["title"]
-                            st.experimental_rerun()
+                            st.rerun()
                 
                 with col2:
                     if st.button("⏹ Stop"):
                         st.session_state.current_video_id = None
                         st.session_state.current_video_title = None
-                        st.experimental_rerun()
+                        st.rerun()
                 
                 with col3:
                     if st.button("⏭ Next"):
@@ -468,7 +468,7 @@ def main():
                             video_id = extract_video_id(track["url"])
                             st.session_state.current_video_id = video_id
                             st.session_state.current_video_title = track["title"]
-                            st.experimental_rerun()
+                            st.rerun()
             else:
                 st.write("No track playing")
         
@@ -497,7 +497,7 @@ def main():
                         video_id = extract_video_id(first_track["url"])
                         st.session_state.current_video_id = video_id
                         st.session_state.current_video_title = first_track["title"]
-                        st.experimental_rerun()
+                        st.rerun()
                     
                     for i, track in enumerate(tracks):
                         col1, col2 = st.columns([3, 1])
@@ -510,7 +510,7 @@ def main():
                                 st.session_state.current_video_title = track["title"]
                                 st.session_state.current_playlist = tracks
                                 st.session_state.current_track_index = i
-                                st.experimental_rerun()
+                                st.rerun()
         
         # Tab 2: My Playlists
         with tab2:
@@ -524,7 +524,7 @@ def main():
                         st.session_state.user_playlists[playlist_name] = []
                         save_playlists(st.session_state.user_playlists)
                         st.success(f"Playlist '{playlist_name}' created!")
-                        st.experimental_rerun()
+                        st.rerun()
                     elif not playlist_name:
                         st.error("Please enter a playlist name")
                     else:
@@ -549,7 +549,7 @@ def main():
                                 })
                                 save_playlists(st.session_state.user_playlists)
                                 st.success(f"Song added to '{selected_playlist}'!")
-                                st.experimental_rerun()
+                                st.rerun()
                             else:
                                 st.error("Invalid YouTube URL")
                         else:
@@ -569,7 +569,7 @@ def main():
                                 del st.session_state.user_playlists[playlist_name]
                                 save_playlists(st.session_state.user_playlists)
                                 st.success(f"Playlist '{playlist_name}' deleted!")
-                                st.experimental_rerun()
+                                st.rerun()
                         
                         if tracks:
                             if st.button(f"Play All: {playlist_name}", key=f"play_all_user_{playlist_name}"):
@@ -579,7 +579,7 @@ def main():
                                 video_id = extract_video_id(first_track["url"])
                                 st.session_state.current_video_id = video_id
                                 st.session_state.current_video_title = first_track["title"]
-                                st.experimental_rerun()
+                                st.rerun()
                             
                             for i, track in enumerate(tracks):
                                 col1, col2, col3 = st.columns([3, 1, 1])
@@ -592,12 +592,12 @@ def main():
                                         st.session_state.current_video_title = track["title"]
                                         st.session_state.current_playlist = tracks
                                         st.session_state.current_track_index = i
-                                        st.experimental_rerun()
+                                        st.rerun()
                                 with col3:
                                     if st.button("Remove", key=f"remove_{playlist_name}_{i}"):
                                         st.session_state.user_playlists[playlist_name].pop(i)
                                         save_playlists(st.session_state.user_playlists)
-                                        st.experimental_rerun()
+                                        st.rerun()
                         else:
                             st.info("This playlist is empty")
             else:
@@ -632,7 +632,7 @@ def main():
                                 if st.button("Play", key=f"play_channel_{i}"):
                                     st.session_state.current_video_id = video_id
                                     st.session_state.current_video_title = title
-                                    st.experimental_rerun()
+                                    st.rerun()
                             
                             with btn_col2:
                                 # Add to playlist button
@@ -643,7 +643,7 @@ def main():
                                             "title": title
                                         }
                                         st.session_state.show_add_dialog = True
-                                        st.experimental_rerun()
+                                        st.rerun()
                         
                         st.markdown("---")
                     
@@ -662,11 +662,11 @@ def main():
                                 save_playlists(st.session_state.user_playlists)
                                 st.success(f"Added to '{selected_playlist}'!")
                                 st.session_state.show_add_dialog = False
-                                st.experimental_rerun()
+                                st.rerun()
                             
                             if cancel:
                                 st.session_state.show_add_dialog = False
-                                st.experimental_rerun()
+                                st.rerun()
                 else:
                     st.info("No videos found in the channel")
             else:
@@ -705,7 +705,7 @@ def main():
                                     if st.button("Play", key=f"play_search_{i}"):
                                         st.session_state.current_video_id = video_id
                                         st.session_state.current_video_title = title
-                                        st.experimental_rerun()
+                                        st.rerun()
                                 
                                 with btn_col2:
                                     # Add to playlist button
@@ -716,7 +716,7 @@ def main():
                                                 "title": title
                                             }
                                             st.session_state.show_add_dialog = True
-                                            st.experimental_rerun()
+                                            st.rerun()
                             
                             st.markdown("---")
                     else:
