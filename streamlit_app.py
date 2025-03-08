@@ -127,7 +127,7 @@ def save_config(config):
     with open("config.yaml", 'w') as file:
         yaml.dump(config, file, default_flow_style=False)
 
-def register_user(username, name, email, password):
+def register_user(username, email, password):
     """Register a new user and add to config.yaml"""
     if os.path.exists("config.yaml"):
         with open("config.yaml") as file:
@@ -148,7 +148,7 @@ def register_user(username, name, email, password):
         # Add the new user
         config["credentials"]["usernames"][username] = {
             "email": email,
-            "name": name,
+            "name": username,  # Use username as the name
             "password": hashed_password
         }
         
@@ -361,7 +361,6 @@ def main():
                 st.subheader("Create a New Account")
                 
                 reg_username = st.text_input("Username", key="reg_username")
-                reg_name = st.text_input("Full Name", key="reg_name")
                 reg_email = st.text_input("Email", key="reg_email")
                 reg_password = st.text_input("Password", type="password", key="reg_password")
                 reg_password2 = st.text_input("Confirm Password", type="password", key="reg_password2")
@@ -369,7 +368,7 @@ def main():
                 submit = st.form_submit_button("Register")
                 
                 if submit:
-                    if not reg_username or not reg_name or not reg_email or not reg_password:
+                    if not reg_username or not reg_email or not reg_password:
                         st.error("All fields are required")
                     elif not re.match(r"[^@]+@[^@]+\.[^@]+", reg_email):
                         st.error("Please enter a valid email address")
@@ -378,7 +377,7 @@ def main():
                     elif reg_password != reg_password2:
                         st.error("Passwords do not match")
                     else:
-                        success, message = register_user(reg_username, reg_name, reg_email, reg_password)
+                        success, message = register_user(reg_username, reg_email, reg_password)
                         if success:
                             st.success(message)
                             st.info("You can now log in with your new account")
@@ -406,7 +405,6 @@ def main():
                 st.subheader("Create a New Account")
                 
                 reg_username = st.text_input("Username", key="reg_username")
-                reg_name = st.text_input("Full Name", key="reg_name")
                 reg_email = st.text_input("Email", key="reg_email")
                 reg_password = st.text_input("Password", type="password", key="reg_password")
                 reg_password2 = st.text_input("Confirm Password", type="password", key="reg_password2")
@@ -414,7 +412,7 @@ def main():
                 submit = st.form_submit_button("Register")
                 
                 if submit:
-                    if not reg_username or not reg_name or not reg_email or not reg_password:
+                    if not reg_username or not reg_email or not reg_password:
                         st.error("All fields are required")
                     elif not re.match(r"[^@]+@[^@]+\.[^@]+", reg_email):
                         st.error("Please enter a valid email address")
@@ -423,7 +421,7 @@ def main():
                     elif reg_password != reg_password2:
                         st.error("Passwords do not match")
                     else:
-                        success, message = register_user(reg_username, reg_name, reg_email, reg_password)
+                        success, message = register_user(reg_username, reg_email, reg_password)
                         if success:
                             st.success(message)
                             st.info("You can now log in with your new account")
