@@ -285,61 +285,112 @@ def get_featured_playlists():
         ]
     }
 
+# Function to get YouTube channel ID from settings
+def get_channel_id():
+    return "ClassicsAI"  # Use the channel username, not ID
+
+# Function to search ClassicsAI YouTube channel
+def search_channel(youtube, query, max_results=10):
+    if not youtube:
+        return []
+    
+    try:
+        # Get channel ID from settings
+        channel_id = get_channel_id()
+        
+        search_response = youtube.search().list(
+            q=query,
+            channelId=channel_id,
+            part="snippet",
+            maxResults=max_results,
+            type="video"
+        ).execute()
+        
+        return search_response.get("items", [])
+    except HttpError as e:
+        st.error(f"An error occurred: {e}")
+        return []
+
 # Function to get channel videos
 def get_channel_videos(youtube, max_results=10):
     if not youtube:
         return []
-    
-    # Debug info
+
     st.write("### Debug Information:")
-    
-    # Hardcoded list of ClassicsAI video IDs from your featured playlists
-    video_ids = [
-        "xVphVzGIcpY",  # Beethoven - New Piano Concerto 30
-        "pJTY7keAUdA",  # Beethoven - New Piano Concerto 32
-        "zj_-_Oh113Q",  # Beethoven - New Piano Concerto 37
-        "sM8X93lJUOg",  # Beethoven - New Piano Concerto 40
-        "36jdYoQkjek",  # Beethoven - New Piano Concerto 41
-        "x1j0ylFzIMU",  # Beethoven - New Piano Concerto 42
-        "-n4TGb1HrBc",  # Beethoven - New Piano Concerto 43
-        "TRUr9uotKA0",  # Beethoven - New Piano Concerto 25
-        "-UCvjD2bCks",  # Beethoven - New Piano Concerto 23
-        "p5iCHb3Axbc",  # Beethoven - New Violin Concerto 17
-        "4VNfql1DfqM"   # Beethoven - New Violin Concerto 20
-    ]
-    
-    st.write(f"- Using {len(video_ids)} hardcoded ClassicsAI video IDs")
-    
+
+    channel_identifier = get_channel_id()
+    st.write(f"- Channel identifier: {channel_identifier}")
+
     try:
-        # Get video details for each ID
-        transformed_items = []
-        for video_id in video_ids[:max_results]:
-            try:
-                video_response = youtube.videos().list(
+        # Determine if identifier is username or channel ID
+        if not channel_identifier.startswith("UC"):
+            st.write("- Identifier is a username, fetching channel ID...")
+            channel_response = youtube.channels().list(
+                part="id",
+                forUsername=channel_identifier
+            ).execute()
+
+            if channel_response.get("items"):
+                channel_id = channel_response["items"][0]["id"]
+                st.write(f"- Found channel ID via username: {channel_id}")
+            else:
+                st.write("- Username lookup failed, trying search method...")
+                search_response = youtube.search().list(
                     part="snippet",
-                    id=video_id
+                    q=channel_identifier,
+                    type="channel",
+                    maxResults=5
                 ).execute()
-                
-                if video_response.get("items"):
-                    video = video_response["items"][0]
-                    transformed_item = {
-                        "snippet": {
-                            "resourceId": {"videoId": video_id},
-                            "title": video["snippet"]["title"],
-                            "thumbnails": video["snippet"]["thumbnails"],
-                            "publishedAt": video["snippet"]["publishedAt"]
-                        }
-                    }
-                    transformed_items.append(transformed_item)
-            except Exception as e:
-                st.write(f"- Error getting video {video_id}: {str(e)}")
-                continue
-        
+
+                if search_response.get("items"):
+                    # Select the correct channel based on exact match
+                    channel_id = None
+                    for item in search_response["items"]:
+                        title = item["snippet"]["title"]
+                        if title.lower() == channel_identifier.lower():
+                            channel_id = item["id"]["channelId"]
+                            st.write(f"- Found exact match channel ID via search: {channel_id}")
+                            break
+                    if not channel_id:
+                        channel_id = search_response["items"][0]["id"]["channelId"]
+                        st.write(f"- No exact match found, using first result channel ID: {channel_id}")
+                else:
+                    st.error("Channel not found via search.")
+                    return []
+        else:
+            channel_id = channel_identifier
+            st.write(f"- Using provided channel ID: {channel_id}")
+
+        # Fetch videos from the channel
+        st.write("- Fetching videos from channel...")
+        search_response = youtube.search().list(
+            part="snippet",
+            channelId=channel_id,
+            maxResults=max_results,
+            type="video",
+            order="date"
+        ).execute()
+
+        items = search_response.get("items", [])
+
+        # Transform search results
+        transformed_items = []
+        for item in items:
+            transformed_item = {
+                "snippet": {
+                    "resourceId": {"videoId": item["id"]["videoId"]},
+                    "title": item["snippet"]["title"],
+                    "thumbnails": item["snippet"]["thumbnails"],
+                    "publishedAt": item["snippet"]["publishedAt"]
+                }
+            }
+            transformed_items.append(transformed_item)
+
         st.write(f"- Found {len(transformed_items)} videos")
         return transformed_items
+
     except HttpError as e:
         st.error(f"An error occurred: {e}")
-        st.write(f"- Full error details: {str(e)}")
         return []
 
 # Main application
@@ -705,7 +756,7 @@ def main():
                 search_query = st.text_input("Search for videos", key="search_query")
                 
                 if st.button("Search") and search_query:
-                    search_results = get_channel_videos(youtube, max_results=10)
+                    search_results = search_channel(youtube, search_query)
                     
                     if search_results:
                         st.subheader("Search Results")
