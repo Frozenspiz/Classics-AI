@@ -403,24 +403,15 @@ def main():
                 submit = st.form_submit_button("Register")
                 
                 if submit:
-                    if not reg_username or not reg_email or not reg_password:
-                        st.error("All fields are required")
-                    elif not re.match(r"[^@]+@[^@]+\.[^@]+", reg_email):
-                        st.error("Please enter a valid email address")
-                    elif len(reg_password) < 6:
-                        st.error("Password must be at least 6 characters long")
-                    elif reg_password != reg_password2:
-                        st.error("Passwords do not match")
+                    if reg_password != reg_password2:
+                        st.error("Passwords do not match!")
                     else:
-                        success, message = register_user(reg_username, reg_email, reg_password)
-                        if success:
-                            st.success(message)
-                            st.info("You can now log in with your new account")
+                        result = register_user(reg_username, reg_email, reg_password)
+                        if result:
+                            st.success("Registration successful! Please login.")
                             st.session_state.show_register = False
                             st.rerun()
-                        else:
-                            st.error(message)
-        
+    
     elif authentication_status == None:
         st.warning("Please enter your username and password")
         
@@ -447,73 +438,55 @@ def main():
                 submit = st.form_submit_button("Register")
                 
                 if submit:
-                    if not reg_username or not reg_email or not reg_password:
-                        st.error("All fields are required")
-                    elif not re.match(r"[^@]+@[^@]+\.[^@]+", reg_email):
-                        st.error("Please enter a valid email address")
-                    elif len(reg_password) < 6:
-                        st.error("Password must be at least 6 characters long")
-                    elif reg_password != reg_password2:
-                        st.error("Passwords do not match")
+                    if reg_password != reg_password2:
+                        st.error("Passwords do not match!")
                     else:
-                        success, message = register_user(reg_username, reg_email, reg_password)
-                        if success:
-                            st.success(message)
-                            st.info("You can now log in with your new account")
+                        result = register_user(reg_username, reg_email, reg_password)
+                        if result:
+                            st.success("Registration successful! Please login.")
                             st.session_state.show_register = False
                             st.rerun()
-                        else:
-                            st.error(message)
+    
+    else:
+        # Welcome message
+        st.success(f"Welcome, {name}!")
         
-    elif authentication_status:
-        # Sidebar
-        with st.sidebar:
-            st.subheader(f"Welcome, {name}")
-            authenticator.logout("Logout", "sidebar")
-            
-            st.subheader("Now Playing")
-            if st.session_state.current_video_id and st.session_state.current_video_title:
-                st.write(f"**{st.session_state.current_video_title}**")
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    if st.button("⏮ Previous"):
-                        if st.session_state.current_playlist and st.session_state.current_track_index > 0:
-                            st.session_state.current_track_index -= 1
-                            track = st.session_state.current_playlist[st.session_state.current_track_index]
-                            video_id = extract_video_id(track["url"])
-                            st.session_state.current_video_id = video_id
-                            st.session_state.current_video_title = track["title"]
-                            st.rerun()
-                
-                with col2:
-                    if st.button("⏹ Stop"):
-                        st.session_state.current_video_id = None
-                        st.session_state.current_video_title = None
-                        st.rerun()
-                
-                with col3:
-                    if st.button("⏭ Next"):
-                        if (st.session_state.current_playlist and 
-                            st.session_state.current_track_index < len(st.session_state.current_playlist) - 1):
-                            st.session_state.current_track_index += 1
-                            track = st.session_state.current_playlist[st.session_state.current_track_index]
-                            video_id = extract_video_id(track["url"])
-                            st.session_state.current_video_id = video_id
-                            st.session_state.current_video_title = track["title"]
-                            st.rerun()
-            else:
-                st.write("No track playing")
+        # Logout button
+        authenticator.logout("Logout", "main")
         
-        # Main content
+        # Apply classical theme
+        apply_classical_theme()
+        
+        # Create decorative header
         create_decorative_header()
         
-        # Video player
+        # If a video is currently playing, display it
         if st.session_state.current_video_id:
-            st.markdown(embed_youtube_video(st.session_state.current_video_id), unsafe_allow_html=True)
+            st.header(f"Now Playing: {st.session_state.current_video_title}")
+            embed_youtube_video(st.session_state.current_video_id)
+            
+            # If there's a playlist, show next/previous buttons
+            if st.session_state.current_playlist:
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("⏮️ Previous") and st.session_state.current_track_index > 0:
+                        st.session_state.current_track_index -= 1
+                        prev_track = st.session_state.current_playlist[st.session_state.current_track_index]
+                        video_id = extract_video_id(prev_track["url"])
+                        st.session_state.current_video_id = video_id
+                        st.session_state.current_video_title = prev_track["title"]
+                        st.rerun()
+                with col2:
+                    if st.button("Next ⏭️") and st.session_state.current_track_index < len(st.session_state.current_playlist) - 1:
+                        st.session_state.current_track_index += 1
+                        next_track = st.session_state.current_playlist[st.session_state.current_track_index]
+                        video_id = extract_video_id(next_track["url"])
+                        st.session_state.current_video_id = video_id
+                        st.session_state.current_video_title = next_track["title"]
+                        st.rerun()
         
-        # Tabs for different sections
-        tab1, tab2, tab3, tab4 = st.tabs(["Featured Playlists", "My Playlists", "Channel Browser", "Search"])
+        # Tabs
+        tab1, tab2, tab3, tab4 = st.tabs(["Featured Playlists", "My Playlists", "ClassicsAI Channel", "Search"])
         
         # Tab 1: Featured Playlists
         with tab1:
@@ -522,87 +495,119 @@ def main():
             featured_playlists = get_featured_playlists()
             
             for playlist_name, tracks in featured_playlists.items():
-                with st.expander(playlist_name, expanded=False):
-                    if st.button(f"Play All: {playlist_name}", key=f"play_all_{playlist_name}"):
-                        st.session_state.current_playlist = tracks
-                        st.session_state.current_track_index = 0
-                        first_track = tracks[0]
-                        video_id = extract_video_id(first_track["url"])
-                        st.session_state.current_video_id = video_id
-                        st.session_state.current_video_title = first_track["title"]
+                with st.expander(playlist_name):
+                    if tracks:
+                        if st.button(f"Play All: {playlist_name}", key=f"play_all_{playlist_name}"):
+                            st.session_state.current_playlist = tracks
+                            st.session_state.current_track_index = 0
+                            first_track = tracks[0]
+                            video_id = extract_video_id(first_track["url"])
+                            st.session_state.current_video_id = video_id
+                            st.session_state.current_video_title = first_track["title"]
+                            st.rerun()
+                        
+                        if st.button(f"Add to My Playlists: {playlist_name}", key=f"add_playlist_{playlist_name}"):
+                            # Create a new playlist with a unique name
+                            count = 1
+                            new_name = f"{playlist_name}"
+                            while new_name in st.session_state.user_playlists:
+                                new_name = f"{playlist_name} ({count})"
+                                count += 1
+                            
+                            st.session_state.user_playlists[new_name] = tracks.copy()
+                            save_playlists(st.session_state.user_playlists)
+                            st.success(f"Added '{new_name}' to your playlists!")
+                            st.rerun()
+                        
+                        for i, track in enumerate(tracks):
+                            col1, col2, col3 = st.columns([3, 1, 1])
+                            with col1:
+                                st.write(f"{i+1}. {track['title']}")
+                            with col2:
+                                if st.button("Play", key=f"play_{playlist_name}_{i}"):
+                                    video_id = extract_video_id(track["url"])
+                                    st.session_state.current_video_id = video_id
+                                    st.session_state.current_video_title = track["title"]
+                                    st.session_state.current_playlist = tracks
+                                    st.session_state.current_track_index = i
+                                    st.rerun()
+                            with col3:
+                                if st.button("Add to My Playlists", key=f"add_track_{playlist_name}_{i}"):
+                                    if not st.session_state.user_playlists:
+                                        # Create a new playlist if none exists
+                                        st.session_state.user_playlists["My Favorites"] = [track]
+                                        save_playlists(st.session_state.user_playlists)
+                                        st.success(f"Added to new 'My Favorites' playlist!")
+                                    else:
+                                        # Show dialog to select a playlist
+                                        st.session_state.temp_video = track
+                                        st.session_state.show_add_dialog = True
+                                    st.rerun()
+                    else:
+                        st.info("This playlist is empty")
+            
+            # Dialog for adding to playlist
+            if "show_add_dialog" in st.session_state and st.session_state.show_add_dialog:
+                with st.form("add_to_playlist_form"):
+                    st.subheader("Add to Playlist")
+                    
+                    # Option to create a new playlist
+                    create_new = st.checkbox("Create a new playlist")
+                    
+                    if create_new:
+                        new_playlist_name = st.text_input("New Playlist Name")
+                    else:
+                        playlist_names = list(st.session_state.user_playlists.keys())
+                        selected_playlist = st.selectbox("Select Playlist", playlist_names)
+                    
+                    submitted = st.form_submit_button("Add")
+                    cancel = st.form_submit_button("Cancel")
+                    
+                    if submitted:
+                        if create_new and new_playlist_name:
+                            st.session_state.user_playlists[new_playlist_name] = [st.session_state.temp_video]
+                            st.success(f"Created new playlist '{new_playlist_name}' and added track!")
+                        elif not create_new:
+                            st.session_state.user_playlists[selected_playlist].append(st.session_state.temp_video)
+                            st.success(f"Added to '{selected_playlist}'!")
+                        
+                        save_playlists(st.session_state.user_playlists)
+                        st.session_state.show_add_dialog = False
                         st.rerun()
                     
-                    for i, track in enumerate(tracks):
-                        col1, col2 = st.columns([3, 1])
-                        with col1:
-                            st.write(f"{i+1}. {track['title']}")
-                        with col2:
-                            if st.button("Play", key=f"play_{playlist_name}_{i}"):
-                                video_id = extract_video_id(track["url"])
-                                st.session_state.current_video_id = video_id
-                                st.session_state.current_video_title = track["title"]
-                                st.session_state.current_playlist = tracks
-                                st.session_state.current_track_index = i
-                                st.rerun()
+                    if cancel:
+                        st.session_state.show_add_dialog = False
+                        st.rerun()
         
         # Tab 2: My Playlists
         with tab2:
             st.header("My Playlists")
             
-            # Create new playlist
-            with st.expander("Create New Playlist", expanded=False):
-                playlist_name = st.text_input("Playlist Name", key="new_playlist_name")
-                if st.button("Create Playlist"):
-                    if playlist_name and playlist_name not in st.session_state.user_playlists:
-                        st.session_state.user_playlists[playlist_name] = []
-                        save_playlists(st.session_state.user_playlists)
-                        st.success(f"Playlist '{playlist_name}' created!")
-                        st.rerun()
-                    elif not playlist_name:
-                        st.error("Please enter a playlist name")
-                    else:
-                        st.error(f"Playlist '{playlist_name}' already exists")
-            
-            # Add song to playlist
-            with st.expander("Add Song to Playlist", expanded=False):
-                if st.session_state.user_playlists:
-                    playlist_names = list(st.session_state.user_playlists.keys())
-                    selected_playlist = st.selectbox("Select Playlist", playlist_names, key="add_song_playlist")
+            # Create a new playlist form
+            with st.expander("Create a New Playlist"):
+                with st.form("create_playlist_form"):
+                    new_playlist_name = st.text_input("Playlist Name")
+                    submit_new = st.form_submit_button("Create")
                     
-                    song_url = st.text_input("YouTube URL", key="add_song_url")
-                    song_title = st.text_input("Song Title", key="add_song_title")
-                    
-                    if st.button("Add Song"):
-                        if song_url and song_title:
-                            video_id = extract_video_id(song_url)
-                            if video_id:
-                                st.session_state.user_playlists[selected_playlist].append({
-                                    "url": song_url,
-                                    "title": song_title
-                                })
-                                save_playlists(st.session_state.user_playlists)
-                                st.success(f"Song added to '{selected_playlist}'!")
-                                st.rerun()
-                            else:
-                                st.error("Invalid YouTube URL")
+                    if submit_new and new_playlist_name:
+                        if new_playlist_name in st.session_state.user_playlists:
+                            st.error("A playlist with this name already exists!")
                         else:
-                            st.error("Please enter both URL and title")
-                else:
-                    st.info("Create a playlist first")
+                            st.session_state.user_playlists[new_playlist_name] = []
+                            save_playlists(st.session_state.user_playlists)
+                            st.success(f"Created playlist '{new_playlist_name}'!")
+                            st.rerun()
             
             # Display user playlists
             if st.session_state.user_playlists:
                 for playlist_name, tracks in st.session_state.user_playlists.items():
-                    with st.expander(playlist_name, expanded=False):
-                        col1, col2 = st.columns([3, 1])
-                        with col1:
-                            st.subheader(playlist_name)
-                        with col2:
-                            if st.button("Delete Playlist", key=f"delete_{playlist_name}"):
-                                del st.session_state.user_playlists[playlist_name]
-                                save_playlists(st.session_state.user_playlists)
-                                st.success(f"Playlist '{playlist_name}' deleted!")
-                                st.rerun()
+                    with st.expander(playlist_name):
+                        # Delete playlist button
+                        if st.button("Delete Playlist", key=f"delete_{playlist_name}"):
+                            del st.session_state.user_playlists[playlist_name]
+                            save_playlists(st.session_state.user_playlists)
+                            st.success(f"Deleted '{playlist_name}'!")
+                            st.rerun()
                         
                         if tracks:
                             if st.button(f"Play All: {playlist_name}", key=f"play_all_user_{playlist_name}"):
@@ -672,9 +677,18 @@ def main():
                                     st.rerun()
                             
                             with btn_col2:
-                                # Add to playlist button
-                                if st.session_state.user_playlists:
-                                    if st.button("Add to Playlist", key=f"add_channel_{i}"):
+                                # Add to playlist button - always show and create a playlist if none exists
+                                if st.button("Add to Playlist", key=f"add_channel_{i}"):
+                                    if not st.session_state.user_playlists:
+                                        # Create default playlist if user has none
+                                        st.session_state.user_playlists["My Favorites"] = [{
+                                            "url": f"https://www.youtube.com/watch?v={video_id}",
+                                            "title": title
+                                        }]
+                                        save_playlists(st.session_state.user_playlists)
+                                        st.success(f"Added to new 'My Favorites' playlist!")
+                                        st.rerun()
+                                    else:
                                         st.session_state.temp_video = {
                                             "url": f"https://www.youtube.com/watch?v={video_id}",
                                             "title": title
@@ -694,16 +708,28 @@ def main():
                     if "show_add_dialog" in st.session_state and st.session_state.show_add_dialog:
                         with st.form("add_to_playlist_form"):
                             st.subheader("Add to Playlist")
-                            playlist_names = list(st.session_state.user_playlists.keys())
-                            selected_playlist = st.selectbox("Select Playlist", playlist_names)
+                            
+                            # Option to create a new playlist
+                            create_new = st.checkbox("Create a new playlist")
+                            
+                            if create_new:
+                                new_playlist_name = st.text_input("New Playlist Name")
+                            else:
+                                playlist_names = list(st.session_state.user_playlists.keys())
+                                selected_playlist = st.selectbox("Select Playlist", playlist_names)
                             
                             submitted = st.form_submit_button("Add")
                             cancel = st.form_submit_button("Cancel")
                             
                             if submitted:
-                                st.session_state.user_playlists[selected_playlist].append(st.session_state.temp_video)
+                                if create_new and new_playlist_name:
+                                    st.session_state.user_playlists[new_playlist_name] = [st.session_state.temp_video]
+                                    st.success(f"Created new playlist '{new_playlist_name}' and added track!")
+                                elif not create_new:
+                                    st.session_state.user_playlists[selected_playlist].append(st.session_state.temp_video)
+                                    st.success(f"Added to '{selected_playlist}'!")
+                                
                                 save_playlists(st.session_state.user_playlists)
-                                st.success(f"Added to '{selected_playlist}'!")
                                 st.session_state.show_add_dialog = False
                                 st.rerun()
                             
@@ -751,9 +777,18 @@ def main():
                                         st.rerun()
                                 
                                 with btn_col2:
-                                    # Add to playlist button
-                                    if st.session_state.user_playlists:
-                                        if st.button("Add to Playlist", key=f"add_search_{i}"):
+                                    # Add to playlist button - always show and create a playlist if none exists
+                                    if st.button("Add to Playlist", key=f"add_search_{i}"):
+                                        if not st.session_state.user_playlists:
+                                            # Create default playlist if user has none
+                                            st.session_state.user_playlists["My Favorites"] = [{
+                                                "url": f"https://www.youtube.com/watch?v={video_id}",
+                                                "title": title
+                                            }]
+                                            save_playlists(st.session_state.user_playlists)
+                                            st.success(f"Added to new 'My Favorites' playlist!")
+                                            st.rerun()
+                                        else:
                                             st.session_state.temp_video = {
                                                 "url": f"https://www.youtube.com/watch?v={video_id}",
                                                 "title": title
