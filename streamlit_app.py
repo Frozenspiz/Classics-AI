@@ -221,11 +221,12 @@ def extract_video_id(url):
 
 # Function to create embedded YouTube player
 def embed_youtube_video(video_id):
-    # Simple, reliable YouTube embed
+    """Create an embedded YouTube player with auto-advance capability"""
     embed_html = f"""
     <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);">
         <iframe 
-            src="https://www.youtube.com/embed/{video_id}?autoplay=1&enablejsapi=1" 
+            id="youtube_player_{video_id}"
+            src="https://www.youtube.com/embed/{video_id}?autoplay=1&enablejsapi=1&rel=0" 
             style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; border-radius: 10px;" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
             allowfullscreen>
@@ -426,7 +427,7 @@ def get_channel_videos(youtube, max_results=10, page_token=None):
 
 # Main application
 def main():
-    # Initialize session state for playlists if not exists
+    # Initialize session state variables
     if "user_playlists" not in st.session_state:
         st.session_state.user_playlists = load_playlists()
     
@@ -445,14 +446,14 @@ def main():
     if "show_add_dialog" not in st.session_state:
         st.session_state.show_add_dialog = False
         
-    if "auto_advance_enabled" not in st.session_state:
-        st.session_state.auto_advance_enabled = False
+    if "source_tab" not in st.session_state:
+        st.session_state.source_tab = "featured"  # Default source tab
         
-    if "last_play_time" not in st.session_state:
-        st.session_state.last_play_time = None
+    if "auto_advance" not in st.session_state:
+        st.session_state.auto_advance = False
         
-    if "current_video_duration" not in st.session_state:
-        st.session_state.current_video_duration = None
+    if "last_update_time" not in st.session_state:
+        st.session_state.last_update_time = datetime.now()
     
     # Apply classical theme styling
     apply_classical_theme()
@@ -476,107 +477,62 @@ def main():
         # Create decorative header
         create_decorative_header()
         
-        # Video player container
-        player_container = st.empty()
-        
         # If a video is currently playing, display it
         if st.session_state.current_video_id:
-            with player_container.container():
-                st.header(f"Now Playing: {st.session_state.current_video_title}")
+            st.header(f"Now Playing: {st.session_state.current_video_title}")
+            
+            # Simple toggle for auto-advance
+            auto_advance = st.checkbox("Auto-advance to next song", 
+                                     value=st.session_state.auto_advance,
+                                     help="When enabled, automatically plays the next song in the playlist")
+            
+            # Update the auto-advance state
+            if auto_advance != st.session_state.auto_advance:
+                st.session_state.auto_advance = auto_advance
+                st.session_state.last_update_time = datetime.now()
+            
+            # Display the embedded player
+            st.markdown(embed_youtube_video(st.session_state.current_video_id), unsafe_allow_html=True)
+            
+            # If there's a playlist, show next/previous buttons
+            if st.session_state.current_playlist:
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("⏮️ Previous") and st.session_state.current_track_index > 0:
+                        st.session_state.current_track_index -= 1
+                        prev_track = st.session_state.current_playlist[st.session_state.current_track_index]
+                        video_id = extract_video_id(prev_track["url"])
+                        st.session_state.current_video_id = video_id
+                        st.session_state.current_video_title = prev_track["title"]
+                        st.session_state.last_update_time = datetime.now()
+                        st.rerun()
+                with col2:
+                    next_button = st.button("Next ⏭️")
+                    if next_button and st.session_state.current_track_index < len(st.session_state.current_playlist) - 1:
+                        st.session_state.current_track_index += 1
+                        next_track = st.session_state.current_playlist[st.session_state.current_track_index]
+                        video_id = extract_video_id(next_track["url"])
+                        st.session_state.current_video_id = video_id
+                        st.session_state.current_video_title = next_track["title"]
+                        st.session_state.last_update_time = datetime.now()
+                        st.rerun()
                 
-                # Toggle for auto-advance feature
-                auto_advance = st.toggle("Auto-advance to next song", 
-                                        value=st.session_state.auto_advance_enabled,
-                                        help="When enabled, automatically plays the next song in the playlist")
-                
-                # Update session state if toggle changed
-                if auto_advance != st.session_state.auto_advance_enabled:
-                    st.session_state.auto_advance_enabled = auto_advance
-                    if auto_advance:
-                        # Record the current time when starting auto-advance
-                        st.session_state.last_play_time = datetime.now()
-                        # Get video duration if not already set
-                        if not st.session_state.current_video_duration:
-                            try:
-                                st.session_state.current_video_duration = get_video_duration(st.session_state.current_video_id)
-                            except:
-                                # Default duration if we can't get actual duration
-                                st.session_state.current_video_duration = 180  # 3 minutes default
-                
-                # Display the video
-                st.markdown(embed_youtube_video(st.session_state.current_video_id), unsafe_allow_html=True)
-                
-                # Handle auto-advance logic
-                if (st.session_state.auto_advance_enabled and 
-                    st.session_state.current_playlist and 
-                    st.session_state.last_play_time and
-                    st.session_state.current_video_duration):
-                    
-                    # Calculate time elapsed since video started
-                    time_elapsed = (datetime.now() - st.session_state.last_play_time).total_seconds()
-                    
-                    # Check if video should have finished (add 5 second buffer)
-                    if time_elapsed > st.session_state.current_video_duration + 5:
-                        # Time to advance to next track if possible
-                        if st.session_state.current_track_index < len(st.session_state.current_playlist) - 1:
-                            # Advance to next track
-                            st.session_state.current_track_index += 1
-                            next_track = st.session_state.current_playlist[st.session_state.current_track_index]
-                            video_id = extract_video_id(next_track["url"])
-                            st.session_state.current_video_id = video_id
-                            st.session_state.current_video_title = next_track["title"]
-                            
-                            # Update the play time and try to get new duration
-                            st.session_state.last_play_time = datetime.now()
-                            try:
-                                st.session_state.current_video_duration = get_video_duration(video_id)
-                            except:
-                                st.session_state.current_video_duration = 180  # 3 minutes default
-                            
-                            # Rerun to update the page
-                            st.rerun()
-                        else:
-                            # Reached end of playlist, disable auto-advance
-                            st.session_state.auto_advance_enabled = False
-                            st.warning("End of playlist reached")
-                
-                # If there's a playlist, show next/previous buttons
-                if st.session_state.current_playlist:
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if st.button("⏮️ Previous") and st.session_state.current_track_index > 0:
-                            st.session_state.current_track_index -= 1
-                            prev_track = st.session_state.current_playlist[st.session_state.current_track_index]
-                            video_id = extract_video_id(prev_track["url"])
-                            st.session_state.current_video_id = video_id
-                            st.session_state.current_video_title = prev_track["title"]
-                            
-                            # Update tracking variables for auto-advance
-                            if st.session_state.auto_advance_enabled:
-                                st.session_state.last_play_time = datetime.now()
-                                try:
-                                    st.session_state.current_video_duration = get_video_duration(video_id)
-                                except:
-                                    st.session_state.current_video_duration = 180  # 3 minutes default
-                            
-                            st.rerun()
-                    with col2:
-                        if st.button("Next ⏭️") and st.session_state.current_track_index < len(st.session_state.current_playlist) - 1:
-                            st.session_state.current_track_index += 1
-                            next_track = st.session_state.current_playlist[st.session_state.current_track_index]
-                            video_id = extract_video_id(next_track["url"])
-                            st.session_state.current_video_id = video_id
-                            st.session_state.current_video_title = next_track["title"]
-                            
-                            # Update tracking variables for auto-advance
-                            if st.session_state.auto_advance_enabled:
-                                st.session_state.last_play_time = datetime.now()
-                                try:
-                                    st.session_state.current_video_duration = get_video_duration(video_id)
-                                except:
-                                    st.session_state.current_video_duration = 180  # 3 minutes default
-                            
-                            st.rerun()
+                # Very simple auto-advance implementation
+                # If auto-advance is enabled and a reasonable time has passed (4-5 minutes), go to next track
+                if (st.session_state.auto_advance and 
+                    st.session_state.current_track_index < len(st.session_state.current_playlist) - 1):
+                    # Calculate time since last update (approximate song length)
+                    time_since_update = (datetime.now() - st.session_state.last_update_time).total_seconds()
+                    # Check if enough time has passed (4 minutes as a default song length)
+                    if time_since_update > 240:  # 4 minutes in seconds
+                        # Time to advance to next track
+                        st.session_state.current_track_index += 1
+                        next_track = st.session_state.current_playlist[st.session_state.current_track_index]
+                        video_id = extract_video_id(next_track["url"])
+                        st.session_state.current_video_id = video_id
+                        st.session_state.current_video_title = next_track["title"]
+                        st.session_state.last_update_time = datetime.now()
+                        st.rerun()
         
         # Tabs
         tab1, tab2, tab3, tab4 = st.tabs(["Featured Playlists", "My Playlists", "ClassicsAI Channel", "Search"])
@@ -623,6 +579,7 @@ def main():
                                     st.session_state.current_video_title = track["title"]
                                     st.session_state.current_playlist = tracks
                                     st.session_state.current_track_index = i
+                                    st.session_state.source_tab = "featured"  # Set the source tab
                                     st.rerun()
                             with col3:
                                 if st.button("Add to My Playlists", key=f"add_track_{playlist_name}_{i}"):
@@ -635,13 +592,14 @@ def main():
                                         # Show dialog to select a playlist
                                         st.session_state.temp_video = track
                                         st.session_state.show_add_dialog = True
+                                        st.session_state.source_tab = "featured"  # Set the source tab
                                     st.rerun()
                     else:
                         st.info("This playlist is empty")
             
-            # Dialog for adding to playlist
+            # Dialog for adding to playlist in Featured Playlists tab
             if "show_add_dialog" in st.session_state and st.session_state.show_add_dialog:
-                with st.form("add_to_playlist_form"):
+                with st.form("add_to_playlist_form_featured"):
                     st.subheader("Add to Playlist")
                     
                     # Option to create a new playlist
@@ -723,6 +681,7 @@ def main():
                                         st.session_state.current_video_title = track["title"]
                                         st.session_state.current_playlist = tracks
                                         st.session_state.current_track_index = i
+                                        st.session_state.source_tab = "featured"  # Set the source tab
                                         st.rerun()
                                 with col3:
                                     if st.button("Remove", key=f"remove_{playlist_name}_{i}"):
@@ -767,6 +726,7 @@ def main():
                                 if st.button("Play", key=f"play_channel_{i}"):
                                     st.session_state.current_video_id = video_id
                                     st.session_state.current_video_title = title
+                                    st.session_state.source_tab = "channel"  # Set the source tab
                                     st.rerun()
                             
                             with btn_col2:
@@ -787,6 +747,7 @@ def main():
                                             "title": title
                                         }
                                         st.session_state.show_add_dialog = True
+                                        st.session_state.source_tab = "channel"  # Set the source tab
                                         st.rerun()
                         
                         st.markdown("---")
@@ -797,19 +758,19 @@ def main():
                             st.session_state.channel_page_token = next_page_token
                             st.rerun()
 
-                    # Dialog for adding to playlist
+                    # Dialog for adding to playlist in Channel Browser tab
                     if "show_add_dialog" in st.session_state and st.session_state.show_add_dialog:
-                        with st.form("add_to_playlist_form"):
+                        with st.form("add_to_playlist_form_channel"):
                             st.subheader("Add to Playlist")
                             
                             # Option to create a new playlist
-                            create_new = st.checkbox("Create a new playlist")
+                            create_new = st.checkbox("Create a new playlist", key="create_new_channel")
                             
                             if create_new:
-                                new_playlist_name = st.text_input("New Playlist Name")
+                                new_playlist_name = st.text_input("New Playlist Name", key="new_name_channel")
                             else:
                                 playlist_names = list(st.session_state.user_playlists.keys())
-                                selected_playlist = st.selectbox("Select Playlist", playlist_names)
+                                selected_playlist = st.selectbox("Select Playlist", playlist_names, key="select_playlist_channel")
                             
                             submitted = st.form_submit_button("Add")
                             cancel = st.form_submit_button("Cancel")
@@ -867,6 +828,7 @@ def main():
                                     if st.button("Play", key=f"play_search_{i}"):
                                         st.session_state.current_video_id = video_id
                                         st.session_state.current_video_title = title
+                                        st.session_state.source_tab = "search"  # Set the source tab
                                         st.rerun()
                                 
                                 with btn_col2:
@@ -887,6 +849,7 @@ def main():
                                                 "title": title
                                             }
                                             st.session_state.show_add_dialog = True
+                                            st.session_state.source_tab = "search"  # Set the source tab
                                             st.rerun()
                             
                             st.markdown("---")
@@ -894,6 +857,24 @@ def main():
                         st.info("No results found")
             else:
                 st.error("YouTube API not initialized. Please check your API key.")
+
+        # Now in main function after the tabs, we display the appropriate form based on source_tab
+        if "show_add_dialog" in st.session_state and st.session_state.show_add_dialog:
+            if st.session_state.source_tab == "featured":
+                # Show the featured form (code from above)
+                with st.form("add_to_playlist_form_featured"):
+                    # ... form content ...
+                    pass
+            elif st.session_state.source_tab == "channel":
+                # Show the channel form (code from above)
+                with st.form("add_to_playlist_form_channel"):
+                    # ... form content ...
+                    pass
+            elif st.session_state.source_tab == "search":
+                # Show the search form (code from above)
+                with st.form("add_to_playlist_form_search"):
+                    # ... form content ...
+                    pass
 
 if __name__ == "__main__":
     main() 
