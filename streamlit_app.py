@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 import io
 import base64
 import json
-from youtube_player import youtube_player, check_video_ended
+import time
 
 # Page configuration
 st.set_page_config(
@@ -185,51 +185,21 @@ def extract_video_id(url):
     match = re.search(pattern, url)
     return match.group(1) if match else None
 
-# Function to create embedded YouTube player with autoplay functionality
-def embed_youtube_video(video_id, autoplay=False):
+# Function to create embedded YouTube player with autoplay and loop detection
+def embed_youtube_video(video_id, autoplay=True):
     autoplay_param = 1 if autoplay else 0
     return f"""
     <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background-color: #EAE6D9; border: 2px solid #D4AF37; border-radius: 8px;">
         <iframe 
             id="youtube-player"
             style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" 
-            src="https://www.youtube.com/embed/{video_id}?enablejsapi=1&autoplay={autoplay_param}&playlist={video_id}" 
+            src="https://www.youtube.com/embed/{video_id}?enablejsapi=1&autoplay={autoplay_param}&rel=0" 
             title="YouTube video player" 
             frameborder="0" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
             allowfullscreen>
         </iframe>
     </div>
-    
-    <script>
-        // This function will run when the video ends
-        function onVideoEnd() {{
-            // Click the Next button
-            const nextButton = document.querySelector('button:contains("⏭ Next")');
-            if (nextButton) {{
-                nextButton.click();
-            }}
-        }}
-        
-        // Set up a listener for messages from the YouTube iframe
-        window.addEventListener('message', function(event) {{
-            // Check if the message is from the YouTube player
-            if (event.origin === 'https://www.youtube.com' && 
-                event.data && 
-                typeof event.data === 'string') {{
-                
-                try {{
-                    const data = JSON.parse(event.data);
-                    // Check if the video has ended (state = 0)
-                    if (data.event === 'onStateChange' && data.info === 0) {{
-                        onVideoEnd();
-                    }}
-                }} catch (e) {{
-                    // Ignore parsing errors
-                }}
-            }}
-        }});
-    </script>
     """
 
 # Function to load and save playlists
@@ -301,18 +271,14 @@ def main():
     if "current_track_index" not in st.session_state:
         st.session_state.current_track_index = 0
     
-    # Check if a video has ended
-    video_ended, ended_video_id = check_video_ended()
-    if video_ended and st.session_state.current_video_id == ended_video_id:
-        # Video has ended, play next track
-        if (st.session_state.current_playlist and 
-            st.session_state.current_track_index < len(st.session_state.current_playlist) - 1):
-            st.session_state.current_track_index += 1
-            track = st.session_state.current_playlist[st.session_state.current_track_index]
-            video_id = extract_video_id(track["url"])
-            st.session_state.current_video_id = video_id
-            st.session_state.current_video_title = track["title"]
-            st.rerun()
+    # Add a session state for autoplay
+    if "autoplay_enabled" not in st.session_state:
+        st.session_state.autoplay_enabled = True
+    
+    # Add a session state for auto-refresh
+    if "auto_refresh" not in st.session_state:
+        st.session_state.auto_refresh = False
+        st.session_state.last_refresh_time = time.time()
     
     # Get authenticator
     authenticator = get_authenticator()
@@ -416,9 +382,58 @@ def main():
             st.subheader(f"Welcome, {name}")
             authenticator.logout("Logout", "sidebar")
             
+            # Add autoplay toggle
+            st.session_state.autoplay_enabled = st.checkbox("Enable Autoplay", value=st.session_state.autoplay_enabled)
+            
+            # Add auto-refresh toggle for autoplay functionality
+            if st.session_state.autoplay_enabled:
+                st.session_state.auto_refresh = st.checkbox("Auto-refresh (helps with autoplay)", value=st.session_state.auto_refresh)
+                
+                # If auto-refresh is enabled, add a refresh interval slider
+                if st.session_state.auto_refresh:
+                    refresh_interval = st.slider("Refresh interval (seconds)", 
+                                               min_value=10, max_value=60, value=30, step=5)
+                    
+                    # Check if it's time to refresh
+                    current_time = time.time()
+                    if current_time - st.session_state.last_refresh_time > refresh_interval:
+                        st.session_state.last_refresh_time = current_time
+                        st.rerun()
+            
             st.subheader("Now Playing")
             if st.session_state.current_video_id and st.session_state.current_video_title:
                 st.write(f"**{st.session_state.current_video_title}**")
+                
+                # Add a progress indicator for the current track
+                if "video_start_time" not in st.session_state:
+                    st.session_state.video_start_time = time.time()
+                
+                # Try to get video duration using pytube
+                if "video_duration" not in st.session_state or st.session_state.video_duration is None:
+                    try:
+                        yt = pytube.YouTube(f"https://www.youtube.com/watch?v={st.session_state.current_video_id}")
+                        st.session_state.video_duration = yt.length  # Duration in seconds
+                    except Exception as e:
+                        st.session_state.video_duration = 300  # Default to 5 minutes if we can't get the duration
+                
+                # Calculate elapsed time and show progress
+                elapsed_time = time.time() - st.session_state.video_start_time
+                if st.session_state.video_duration > 0:
+                    progress = min(1.0, elapsed_time / st.session_state.video_duration)
+                    st.progress(progress)
+                    
+                    # If the video has ended and autoplay is enabled, play the next track
+                    if progress >= 0.99 and st.session_state.autoplay_enabled:
+                        if (st.session_state.current_playlist and 
+                            st.session_state.current_track_index < len(st.session_state.current_playlist) - 1):
+                            st.session_state.current_track_index += 1
+                            track = st.session_state.current_playlist[st.session_state.current_track_index]
+                            video_id = extract_video_id(track["url"])
+                            st.session_state.current_video_id = video_id
+                            st.session_state.current_video_title = track["title"]
+                            st.session_state.video_start_time = time.time()
+                            st.session_state.video_duration = None
+                            st.rerun()
                 
                 col1, col2, col3 = st.columns(3)
                 with col1:
@@ -429,12 +444,16 @@ def main():
                             video_id = extract_video_id(track["url"])
                             st.session_state.current_video_id = video_id
                             st.session_state.current_video_title = track["title"]
+                            st.session_state.video_start_time = time.time()
+                            st.session_state.video_duration = None
                             st.rerun()
                 
                 with col2:
                     if st.button("⏹ Stop"):
                         st.session_state.current_video_id = None
                         st.session_state.current_video_title = None
+                        st.session_state.video_start_time = None
+                        st.session_state.video_duration = None
                         st.rerun()
                 
                 with col3:
@@ -446,6 +465,8 @@ def main():
                             video_id = extract_video_id(track["url"])
                             st.session_state.current_video_id = video_id
                             st.session_state.current_video_title = track["title"]
+                            st.session_state.video_start_time = time.time()
+                            st.session_state.video_duration = None
                             st.rerun()
             else:
                 st.write("No track playing")
@@ -455,8 +476,7 @@ def main():
         
         # Video player
         if st.session_state.current_video_id:
-            # Use our custom YouTube player component
-            youtube_player(st.session_state.current_video_id)
+            st.markdown(embed_youtube_video(st.session_state.current_video_id, autoplay=True), unsafe_allow_html=True)
         
         # Tabs for different sections - removed Channel Browser and Search tabs
         tab1, tab2 = st.tabs(["Featured Playlists", "My Playlists"])
