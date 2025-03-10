@@ -686,7 +686,7 @@ def main():
                     
                     # Pagination controls
                     if next_page_token:
-                        if st.button("Load More", key="load_more_channel"):
+                        if st.button("Load More"):
                             st.session_state.channel_page_token = next_page_token
                             st.rerun()
 
