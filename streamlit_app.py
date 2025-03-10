@@ -221,18 +221,103 @@ def extract_video_id(url):
 
 # Function to create embedded YouTube player
 def embed_youtube_video(video_id):
-    return f"""
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background-color: #EAE6D9; border: 2px solid #D4AF37; border-radius: 8px;">
+    # Create a unique iframe ID to target with JavaScript
+    iframe_id = f"youtube_player_{video_id}"
+    
+    # Base embed HTML
+    embed_html = f"""
+    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);">
         <iframe 
-            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" 
-            src="https://www.youtube.com/embed/{video_id}" 
-            title="YouTube video player" 
-            frameborder="0" 
+            id="{iframe_id}" 
+            src="https://www.youtube.com/embed/{video_id}?enablejsapi=1" 
+            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; border-radius: 10px;" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
             allowfullscreen>
         </iframe>
     </div>
     """
+    
+    # Add JavaScript to handle auto-play of next track when video ends
+    if st.session_state.current_playlist and st.session_state.current_track_index < len(st.session_state.current_playlist) - 1:
+        next_track_index = st.session_state.current_track_index + 1
+        auto_play_js = f"""
+        <script>
+            // Load YouTube IFrame API
+            var tag = document.createElement('script');
+            tag.src = "https://www.youtube.com/iframe_api";
+            var firstScriptTag = document.getElementsByTagName('script')[0];
+            firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+            
+            // Create YouTube player object and set up event handling
+            var player;
+            function onYouTubeIframeAPIReady() {{
+                player = new YT.Player('{iframe_id}', {{
+                    events: {{
+                        'onStateChange': onPlayerStateChange
+                    }}
+                }});
+            }}
+            
+            // Handle player state changes
+            function onPlayerStateChange(event) {{
+                // When video ends (state = 0)
+                if (event.data === 0) {{
+                    // Set a small delay to allow Streamlit to process the state change
+                    setTimeout(function() {{
+                        // Use Streamlit's componentCommunication to update session state
+                        const nextTrackData = {{
+                            isVideoEnded: true,
+                            nextTrackIndex: {next_track_index}
+                        }};
+                        
+                        // Store in sessionStorage so it persists through page reloads
+                        sessionStorage.setItem('autoPlayNextTrack', JSON.stringify(nextTrackData));
+                        
+                        // Reload the page to trigger the next track to play
+                        window.location.reload();
+                    }}, 500);
+                }}
+            }}
+        </script>
+        """
+        embed_html += auto_play_js
+    
+    # Return the complete HTML with embed and JavaScript
+    return embed_html
+
+# Function to check for auto-play signal from JavaScript
+def check_for_autoplay():
+    # Inject JavaScript to check sessionStorage for auto-play signal
+    check_js = """
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const autoPlayData = sessionStorage.getItem('autoPlayNextTrack');
+            if (autoPlayData) {
+                const data = JSON.parse(autoPlayData);
+                if (data.isVideoEnded) {
+                    // Clear the data to prevent repeated auto-plays
+                    sessionStorage.removeItem('autoPlayNextTrack');
+                    
+                    // Use a hidden button click to trigger the next track
+                    setTimeout(function() {
+                        document.getElementById('autoplay_trigger_button').click();
+                    }, 100);
+                }
+            }
+        });
+    </script>
+    """
+    st.markdown(check_js, unsafe_allow_html=True)
+    
+    # Hidden button to trigger the next track
+    if st.button("AutoplayTrigger", key="autoplay_trigger_button", help="This button is automatically clicked to trigger autoplay", args=None):
+        if st.session_state.current_playlist and st.session_state.current_track_index < len(st.session_state.current_playlist) - 1:
+            st.session_state.current_track_index += 1
+            next_track = st.session_state.current_playlist[st.session_state.current_track_index]
+            video_id = extract_video_id(next_track["url"])
+            st.session_state.current_video_id = video_id
+            st.session_state.current_video_title = next_track["title"]
+            st.rerun()
 
 # Function to load and save playlists
 def load_playlists():
@@ -364,10 +449,26 @@ def main():
         st.session_state.current_video_title = None
         
     if "current_playlist" not in st.session_state:
-        st.session_state.current_playlist = []
+        st.session_state.current_playlist = None
         
     if "current_track_index" not in st.session_state:
         st.session_state.current_track_index = 0
+        
+    if "show_add_dialog" not in st.session_state:
+        st.session_state.show_add_dialog = False
+    
+    # Set up app config
+    st.set_page_config(
+        page_title="ClassicsAI Music Player",
+        page_icon="🎵",
+        layout="wide"
+    )
+    
+    # Apply classical theme styling
+    apply_classical_theme()
+    
+    # Check for auto-play signal from JavaScript
+    check_for_autoplay()
     
     # Get authenticator
     authenticator = get_authenticator()
@@ -463,7 +564,7 @@ def main():
         # If a video is currently playing, display it
         if st.session_state.current_video_id:
             st.header(f"Now Playing: {st.session_state.current_video_title}")
-            embed_youtube_video(st.session_state.current_video_id)
+            st.markdown(embed_youtube_video(st.session_state.current_video_id), unsafe_allow_html=True)
             
             # If there's a playlist, show next/previous buttons
             if st.session_state.current_playlist:
