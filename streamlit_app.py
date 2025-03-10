@@ -185,22 +185,67 @@ def extract_video_id(url):
     match = re.search(pattern, url)
     return match.group(1) if match else None
 
-# Function to create embedded YouTube player with autoplay and loop detection
-def embed_youtube_video(video_id, autoplay=True):
-    autoplay_param = 1 if autoplay else 0
-    return f"""
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background-color: #EAE6D9; border: 2px solid #D4AF37; border-radius: 8px;">
+# Function to create embedded YouTube player with proper end detection
+def embed_youtube_video(video_id):
+    # Generate a unique key for this instance
+    player_key = f"player_{video_id}"
+    
+    # Create the YouTube player with API enabled
+    html = f"""
+    <div id="{player_key}_container" style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background-color: #EAE6D9; border: 2px solid #D4AF37; border-radius: 8px;">
         <iframe 
-            id="youtube-player"
+            id="{player_key}"
             style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" 
-            src="https://www.youtube.com/embed/{video_id}?enablejsapi=1&autoplay={autoplay_param}&rel=0" 
+            src="https://www.youtube.com/embed/{video_id}?enablejsapi=1&autoplay=1&rel=0" 
             title="YouTube video player" 
             frameborder="0" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
             allowfullscreen>
         </iframe>
     </div>
+
+    <script>
+        // Only load the YouTube API once
+        if (!window.YT) {{
+            var tag = document.createElement('script');
+            tag.src = "https://www.youtube.com/iframe_api";
+            var firstScriptTag = document.getElementsByTagName('script')[0];
+            firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+        }}
+
+        // Initialize player once API is ready
+        function initPlayer() {{
+            if (window.YT && window.YT.Player) {{
+                new YT.Player('{player_key}', {{
+                    events: {{
+                        'onStateChange': function(event) {{
+                            // When video ends (state = 0)
+                            if (event.data === 0) {{
+                                // Set a session flag
+                                localStorage.setItem('video_ended', '{video_id}');
+                                
+                                // Get the next button and click it programmatically
+                                const buttons = Array.from(document.querySelectorAll('button'));
+                                const nextButton = buttons.find(button => button.innerText.includes('⏭ Next'));
+                                if (nextButton) {{
+                                    nextButton.click();
+                                }}
+                            }}
+                        }}
+                    }}
+                }});
+            }} else {{
+                // If API isn't ready yet, wait and try again
+                setTimeout(initPlayer, 100);
+            }}
+        }}
+
+        // Start initialization
+        initPlayer();
+    </script>
     """
+    
+    return html
 
 # Function to load and save playlists
 def load_playlists():
@@ -476,7 +521,22 @@ def main():
         
         # Video player
         if st.session_state.current_video_id:
-            st.markdown(embed_youtube_video(st.session_state.current_video_id, autoplay=True), unsafe_allow_html=True)
+            if st.session_state.autoplay_enabled:
+                st.markdown(embed_youtube_video(st.session_state.current_video_id), unsafe_allow_html=True)
+            else:
+                # Use regular embed without autoplay/end detection if autoplay is disabled
+                st.markdown(f"""
+                <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background-color: #EAE6D9; border: 2px solid #D4AF37; border-radius: 8px;">
+                    <iframe 
+                        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" 
+                        src="https://www.youtube.com/embed/{st.session_state.current_video_id}" 
+                        title="YouTube video player" 
+                        frameborder="0" 
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                        allowfullscreen>
+                    </iframe>
+                </div>
+                """, unsafe_allow_html=True)
         
         # Tabs for different sections - removed Channel Browser and Search tabs
         tab1, tab2 = st.tabs(["Featured Playlists", "My Playlists"])
