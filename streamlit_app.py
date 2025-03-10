@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 import io
 import base64
 import json
+from youtube_player import youtube_player, check_video_ended
 
 # Page configuration
 st.set_page_config(
@@ -184,19 +185,51 @@ def extract_video_id(url):
     match = re.search(pattern, url)
     return match.group(1) if match else None
 
-# Function to create embedded YouTube player
-def embed_youtube_video(video_id):
+# Function to create embedded YouTube player with autoplay functionality
+def embed_youtube_video(video_id, autoplay=False):
+    autoplay_param = 1 if autoplay else 0
     return f"""
     <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background-color: #EAE6D9; border: 2px solid #D4AF37; border-radius: 8px;">
         <iframe 
+            id="youtube-player"
             style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" 
-            src="https://www.youtube.com/embed/{video_id}" 
+            src="https://www.youtube.com/embed/{video_id}?enablejsapi=1&autoplay={autoplay_param}&playlist={video_id}" 
             title="YouTube video player" 
             frameborder="0" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
             allowfullscreen>
         </iframe>
     </div>
+    
+    <script>
+        // This function will run when the video ends
+        function onVideoEnd() {{
+            // Click the Next button
+            const nextButton = document.querySelector('button:contains("⏭ Next")');
+            if (nextButton) {{
+                nextButton.click();
+            }}
+        }}
+        
+        // Set up a listener for messages from the YouTube iframe
+        window.addEventListener('message', function(event) {{
+            // Check if the message is from the YouTube player
+            if (event.origin === 'https://www.youtube.com' && 
+                event.data && 
+                typeof event.data === 'string') {{
+                
+                try {{
+                    const data = JSON.parse(event.data);
+                    // Check if the video has ended (state = 0)
+                    if (data.event === 'onStateChange' && data.info === 0) {{
+                        onVideoEnd();
+                    }}
+                }} catch (e) {{
+                    // Ignore parsing errors
+                }}
+            }}
+        }});
+    </script>
     """
 
 # Function to load and save playlists
@@ -267,6 +300,19 @@ def main():
         
     if "current_track_index" not in st.session_state:
         st.session_state.current_track_index = 0
+    
+    # Check if a video has ended
+    video_ended, ended_video_id = check_video_ended()
+    if video_ended and st.session_state.current_video_id == ended_video_id:
+        # Video has ended, play next track
+        if (st.session_state.current_playlist and 
+            st.session_state.current_track_index < len(st.session_state.current_playlist) - 1):
+            st.session_state.current_track_index += 1
+            track = st.session_state.current_playlist[st.session_state.current_track_index]
+            video_id = extract_video_id(track["url"])
+            st.session_state.current_video_id = video_id
+            st.session_state.current_video_title = track["title"]
+            st.rerun()
     
     # Get authenticator
     authenticator = get_authenticator()
@@ -409,7 +455,8 @@ def main():
         
         # Video player
         if st.session_state.current_video_id:
-            st.markdown(embed_youtube_video(st.session_state.current_video_id), unsafe_allow_html=True)
+            # Use our custom YouTube player component
+            youtube_player(st.session_state.current_video_id)
         
         # Tabs for different sections - removed Channel Browser and Search tabs
         tab1, tab2 = st.tabs(["Featured Playlists", "My Playlists"])
