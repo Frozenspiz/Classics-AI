@@ -446,8 +446,8 @@ def main():
     if "show_add_dialog" not in st.session_state:
         st.session_state.show_add_dialog = False
         
-    if "source_tab" not in st.session_state:
-        st.session_state.source_tab = "featured"  # Default source tab
+    if "temp_video" not in st.session_state:
+        st.session_state.temp_video = None
         
     if "auto_advance" not in st.session_state:
         st.session_state.auto_advance = False
@@ -477,14 +477,50 @@ def main():
         # Create decorative header
         create_decorative_header()
         
+        # Global add to playlist dialog - place it at the top level
+        # This will display regardless of which tab triggered it
+        if st.session_state.show_add_dialog and st.session_state.temp_video:
+            with st.form(key="add_to_playlist_form"):
+                st.subheader("Add to Playlist")
+                
+                # Option to create a new playlist
+                create_new = st.checkbox("Create a new playlist")
+                
+                if create_new:
+                    new_playlist_name = st.text_input("New Playlist Name")
+                else:
+                    playlist_names = list(st.session_state.user_playlists.keys())
+                    selected_playlist = st.selectbox("Select Playlist", playlist_names)
+                
+                submitted = st.form_submit_button("Add")
+                cancel = st.form_submit_button("Cancel")
+                
+                if submitted:
+                    if create_new and new_playlist_name:
+                        st.session_state.user_playlists[new_playlist_name] = [st.session_state.temp_video]
+                        st.success(f"Created new playlist '{new_playlist_name}' and added track!")
+                    elif not create_new:
+                        st.session_state.user_playlists[selected_playlist].append(st.session_state.temp_video)
+                        st.success(f"Added to '{selected_playlist}'!")
+                    
+                    save_playlists(st.session_state.user_playlists)
+                    st.session_state.show_add_dialog = False
+                    st.session_state.temp_video = None
+                    st.rerun()
+                
+                if cancel:
+                    st.session_state.show_add_dialog = False
+                    st.session_state.temp_video = None
+                    st.rerun()
+        
         # If a video is currently playing, display it
         if st.session_state.current_video_id:
             st.header(f"Now Playing: {st.session_state.current_video_title}")
             
             # Simple toggle for auto-advance
             auto_advance = st.checkbox("Auto-advance to next song", 
-                                     value=st.session_state.auto_advance,
-                                     help="When enabled, automatically plays the next song in the playlist")
+                                    value=st.session_state.auto_advance,
+                                    help="When enabled, automatically plays the next song in the playlist")
             
             # Update the auto-advance state
             if auto_advance != st.session_state.auto_advance:
@@ -579,7 +615,8 @@ def main():
                                     st.session_state.current_video_title = track["title"]
                                     st.session_state.current_playlist = tracks
                                     st.session_state.current_track_index = i
-                                    st.session_state.source_tab = "featured"  # Set the source tab
+                                    st.session_state.temp_video = track
+                                    st.session_state.show_add_dialog = True
                                     st.rerun()
                             with col3:
                                 if st.button("Add to My Playlists", key=f"add_track_{playlist_name}_{i}"):
@@ -592,43 +629,9 @@ def main():
                                         # Show dialog to select a playlist
                                         st.session_state.temp_video = track
                                         st.session_state.show_add_dialog = True
-                                        st.session_state.source_tab = "featured"  # Set the source tab
                                     st.rerun()
                     else:
                         st.info("This playlist is empty")
-            
-            # Dialog for adding to playlist in Featured Playlists tab
-            if "show_add_dialog" in st.session_state and st.session_state.show_add_dialog:
-                with st.form("add_to_playlist_form_featured"):
-                    st.subheader("Add to Playlist")
-                    
-                    # Option to create a new playlist
-                    create_new = st.checkbox("Create a new playlist")
-                    
-                    if create_new:
-                        new_playlist_name = st.text_input("New Playlist Name")
-                    else:
-                        playlist_names = list(st.session_state.user_playlists.keys())
-                        selected_playlist = st.selectbox("Select Playlist", playlist_names)
-                    
-                    submitted = st.form_submit_button("Add")
-                    cancel = st.form_submit_button("Cancel")
-                    
-                    if submitted:
-                        if create_new and new_playlist_name:
-                            st.session_state.user_playlists[new_playlist_name] = [st.session_state.temp_video]
-                            st.success(f"Created new playlist '{new_playlist_name}' and added track!")
-                        elif not create_new:
-                            st.session_state.user_playlists[selected_playlist].append(st.session_state.temp_video)
-                            st.success(f"Added to '{selected_playlist}'!")
-                        
-                        save_playlists(st.session_state.user_playlists)
-                        st.session_state.show_add_dialog = False
-                        st.rerun()
-                    
-                    if cancel:
-                        st.session_state.show_add_dialog = False
-                        st.rerun()
         
         # Tab 2: My Playlists
         with tab2:
@@ -681,8 +684,9 @@ def main():
                                         st.session_state.current_video_title = track["title"]
                                         st.session_state.current_playlist = tracks
                                         st.session_state.current_track_index = i
-                                        st.session_state.source_tab = "featured"  # Set the source tab
-                                        st.rerun()
+                                        st.session_state.temp_video = track
+                                        st.session_state.show_add_dialog = True
+                                    st.rerun()
                                 with col3:
                                     if st.button("Remove", key=f"remove_{playlist_name}_{i}"):
                                         st.session_state.user_playlists[playlist_name].pop(i)
@@ -726,7 +730,11 @@ def main():
                                 if st.button("Play", key=f"play_channel_{i}"):
                                     st.session_state.current_video_id = video_id
                                     st.session_state.current_video_title = title
-                                    st.session_state.source_tab = "channel"  # Set the source tab
+                                    st.session_state.temp_video = {
+                                        "url": f"https://www.youtube.com/watch?v={video_id}",
+                                        "title": title
+                                    }
+                                    st.session_state.show_add_dialog = True
                                     st.rerun()
                             
                             with btn_col2:
@@ -747,7 +755,6 @@ def main():
                                             "title": title
                                         }
                                         st.session_state.show_add_dialog = True
-                                        st.session_state.source_tab = "channel"  # Set the source tab
                                         st.rerun()
                         
                         st.markdown("---")
@@ -757,39 +764,6 @@ def main():
                         if st.button("Load More", key="load_more_channel"):
                             st.session_state.channel_page_token = next_page_token
                             st.rerun()
-
-                    # Dialog for adding to playlist in Channel Browser tab
-                    if "show_add_dialog" in st.session_state and st.session_state.show_add_dialog:
-                        with st.form("add_to_playlist_form_channel"):
-                            st.subheader("Add to Playlist")
-                            
-                            # Option to create a new playlist
-                            create_new = st.checkbox("Create a new playlist", key="create_new_channel")
-                            
-                            if create_new:
-                                new_playlist_name = st.text_input("New Playlist Name", key="new_name_channel")
-                            else:
-                                playlist_names = list(st.session_state.user_playlists.keys())
-                                selected_playlist = st.selectbox("Select Playlist", playlist_names, key="select_playlist_channel")
-                            
-                            submitted = st.form_submit_button("Add")
-                            cancel = st.form_submit_button("Cancel")
-                            
-                            if submitted:
-                                if create_new and new_playlist_name:
-                                    st.session_state.user_playlists[new_playlist_name] = [st.session_state.temp_video]
-                                    st.success(f"Created new playlist '{new_playlist_name}' and added track!")
-                                elif not create_new:
-                                    st.session_state.user_playlists[selected_playlist].append(st.session_state.temp_video)
-                                    st.success(f"Added to '{selected_playlist}'!")
-                                
-                                save_playlists(st.session_state.user_playlists)
-                                st.session_state.show_add_dialog = False
-                                st.rerun()
-                            
-                            if cancel:
-                                st.session_state.show_add_dialog = False
-                                st.rerun()
                 else:
                     st.info("No videos found in the channel")
             else:
@@ -828,7 +802,11 @@ def main():
                                     if st.button("Play", key=f"play_search_{i}"):
                                         st.session_state.current_video_id = video_id
                                         st.session_state.current_video_title = title
-                                        st.session_state.source_tab = "search"  # Set the source tab
+                                        st.session_state.temp_video = {
+                                            "url": f"https://www.youtube.com/watch?v={video_id}",
+                                            "title": title
+                                        }
+                                        st.session_state.show_add_dialog = True
                                         st.rerun()
                                 
                                 with btn_col2:
@@ -849,7 +827,6 @@ def main():
                                                 "title": title
                                             }
                                             st.session_state.show_add_dialog = True
-                                            st.session_state.source_tab = "search"  # Set the source tab
                                             st.rerun()
                             
                             st.markdown("---")
@@ -857,24 +834,6 @@ def main():
                         st.info("No results found")
             else:
                 st.error("YouTube API not initialized. Please check your API key.")
-
-        # Now in main function after the tabs, we display the appropriate form based on source_tab
-        if "show_add_dialog" in st.session_state and st.session_state.show_add_dialog:
-            if st.session_state.source_tab == "featured":
-                # Show the featured form (code from above)
-                with st.form("add_to_playlist_form_featured"):
-                    # ... form content ...
-                    pass
-            elif st.session_state.source_tab == "channel":
-                # Show the channel form (code from above)
-                with st.form("add_to_playlist_form_channel"):
-                    # ... form content ...
-                    pass
-            elif st.session_state.source_tab == "search":
-                # Show the search form (code from above)
-                with st.form("add_to_playlist_form_search"):
-                    # ... form content ...
-                    pass
 
 if __name__ == "__main__":
     main() 
