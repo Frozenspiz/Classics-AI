@@ -221,58 +221,18 @@ def extract_video_id(url):
 
 # Function to create embedded YouTube player
 def embed_youtube_video(video_id):
-    # Create a unique div ID for the player
-    player_div_id = f"youtube-player-{video_id}"
-    
-    # HTML for embedding YouTube video with autoplay detection
-    html = f"""
-    <div id="{player_div_id}" style="width:100%;">
-        <iframe
-            id="player-{video_id}"
-            width="100%"
-            height="315"
-            src="https://www.youtube.com/embed/{video_id}?enablejsapi=1"
-            frameborder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowfullscreen
-        ></iframe>
+    return f"""
+    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background-color: #EAE6D9; border: 2px solid #D4AF37; border-radius: 8px;">
+        <iframe 
+            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" 
+            src="https://www.youtube.com/embed/{video_id}" 
+            title="YouTube video player" 
+            frameborder="0" 
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+            allowfullscreen>
+        </iframe>
     </div>
-    
-    <script>
-        // Load YouTube API
-        var tag = document.createElement('script');
-        tag.src = "https://www.youtube.com/iframe_api";
-        var firstScriptTag = document.getElementsByTagName('script')[0];
-        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-        
-        // Create YouTube player and handle events
-        var player;
-        function onYouTubeIframeAPIReady() {{
-            player = new YT.Player('player-{video_id}', {{
-                events: {{
-                    'onStateChange': onPlayerStateChange
-                }}
-            }});
-        }}
-        
-        // Handle state changes (0 = ended)
-        function onPlayerStateChange(event) {{
-            if (event.data == 0) {{
-                // Video ended - notify Streamlit
-                setTimeout(function() {{
-                    // Use Streamlit's session state to trigger next song
-                    window.parent.postMessage({{
-                        type: "streamlit:setComponentValue",
-                        value: "video_ended"
-                    }}, "*");
-                }}, 1000);
-            }}
-        }}
-    </script>
     """
-    
-    # Display the HTML
-    st.components.v1.html(html, height=350)
 
 # Function to load and save playlists
 def load_playlists():
@@ -391,28 +351,6 @@ def get_channel_videos(youtube, max_results=10, page_token=None):
         st.error(f"An error occurred: {e}")
         return [], None
 
-# Add a function to handle autoplay in the main app
-def handle_autoplay():
-    # Check if video has ended (set by JavaScript)
-    if "video_ended_trigger" in st.session_state and st.session_state.video_ended_trigger:
-        # Reset the trigger
-        st.session_state.video_ended_trigger = False
-        
-        # Get the current playlist
-        if "current_playlist" in st.session_state and "current_playlist_index" in st.session_state:
-            playlist = st.session_state.current_playlist
-            current_index = st.session_state.current_playlist_index
-            
-            # If there are more songs in the playlist, play the next one
-            if current_index < len(playlist) - 1:
-                st.session_state.current_playlist_index += 1
-                next_video = playlist[st.session_state.current_playlist_index]
-                st.session_state.current_video_id = extract_video_id(next_video["url"])
-                st.session_state.current_video_title = next_video["title"]
-                return True
-    
-    return False
-
 # Main application
 def main():
     # Initialize session state for playlists if not exists
@@ -421,32 +359,15 @@ def main():
     
     if "current_video_id" not in st.session_state:
         st.session_state.current_video_id = None
-    
+        
     if "current_video_title" not in st.session_state:
         st.session_state.current_video_title = None
-    
+        
     if "current_playlist" not in st.session_state:
-        st.session_state.current_playlist = None
-    
-    if "current_playlist_index" not in st.session_state:
-        st.session_state.current_playlist_index = -1
-    
-    # Initialize the video ended trigger
-    if "video_ended_trigger" not in st.session_state:
-        st.session_state.video_ended_trigger = False
-    
-    # Component to receive messages from JavaScript
-    video_ended = st.empty()
-    
-    # Check if a message was received from JavaScript
-    if video_ended.text_input("", value="", key="video_ended_message", label_visibility="collapsed") == "video_ended":
-        st.session_state.video_ended_trigger = True
-        # Clear the input
-        st.session_state.video_ended_message = ""
-    
-    # Handle autoplay if needed
-    if handle_autoplay():
-        st.rerun()
+        st.session_state.current_playlist = []
+        
+    if "current_track_index" not in st.session_state:
+        st.session_state.current_track_index = 0
     
     # Get authenticator
     authenticator = get_authenticator()
@@ -557,11 +478,12 @@ def main():
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     if st.button("⏮ Previous"):
-                        if st.session_state.current_playlist and st.session_state.current_playlist_index > 0:
-                            st.session_state.current_playlist_index -= 1
-                            next_video = st.session_state.current_playlist[st.session_state.current_playlist_index]
-                            st.session_state.current_video_id = extract_video_id(next_video["url"])
-                            st.session_state.current_video_title = next_video["title"]
+                        if st.session_state.current_playlist and st.session_state.current_track_index > 0:
+                            st.session_state.current_track_index -= 1
+                            track = st.session_state.current_playlist[st.session_state.current_track_index]
+                            video_id = extract_video_id(track["url"])
+                            st.session_state.current_video_id = video_id
+                            st.session_state.current_video_title = track["title"]
                             st.rerun()
                 
                 with col2:
@@ -573,11 +495,12 @@ def main():
                 with col3:
                     if st.button("⏭ Next"):
                         if (st.session_state.current_playlist and 
-                            st.session_state.current_playlist_index < len(st.session_state.current_playlist) - 1):
-                            st.session_state.current_playlist_index += 1
-                            next_video = st.session_state.current_playlist[st.session_state.current_playlist_index]
-                            st.session_state.current_video_id = extract_video_id(next_video["url"])
-                            st.session_state.current_video_title = next_video["title"]
+                            st.session_state.current_track_index < len(st.session_state.current_playlist) - 1):
+                            st.session_state.current_track_index += 1
+                            track = st.session_state.current_playlist[st.session_state.current_track_index]
+                            video_id = extract_video_id(track["url"])
+                            st.session_state.current_video_id = video_id
+                            st.session_state.current_video_title = track["title"]
                             st.rerun()
             else:
                 st.write("No track playing")
@@ -587,7 +510,7 @@ def main():
         
         # Video player
         if st.session_state.current_video_id:
-            embed_youtube_video(st.session_state.current_video_id)
+            st.markdown(embed_youtube_video(st.session_state.current_video_id), unsafe_allow_html=True)
         
         # Tabs for different sections
         tab1, tab2, tab3, tab4 = st.tabs(["Featured Playlists", "My Playlists", "Channel Browser", "Search"])
@@ -602,9 +525,10 @@ def main():
                 with st.expander(playlist_name, expanded=False):
                     if st.button(f"Play All: {playlist_name}", key=f"play_all_{playlist_name}"):
                         st.session_state.current_playlist = tracks
-                        st.session_state.current_playlist_index = 0
+                        st.session_state.current_track_index = 0
                         first_track = tracks[0]
-                        st.session_state.current_video_id = extract_video_id(first_track["url"])
+                        video_id = extract_video_id(first_track["url"])
+                        st.session_state.current_video_id = video_id
                         st.session_state.current_video_title = first_track["title"]
                         st.rerun()
                     
@@ -618,7 +542,7 @@ def main():
                                 st.session_state.current_video_id = video_id
                                 st.session_state.current_video_title = track["title"]
                                 st.session_state.current_playlist = tracks
-                                st.session_state.current_playlist_index = i
+                                st.session_state.current_track_index = i
                                 st.rerun()
         
         # Tab 2: My Playlists
@@ -683,7 +607,7 @@ def main():
                         if tracks:
                             if st.button(f"Play All: {playlist_name}", key=f"play_all_user_{playlist_name}"):
                                 st.session_state.current_playlist = tracks
-                                st.session_state.current_playlist_index = 0
+                                st.session_state.current_track_index = 0
                                 first_track = tracks[0]
                                 video_id = extract_video_id(first_track["url"])
                                 st.session_state.current_video_id = video_id
@@ -700,7 +624,7 @@ def main():
                                         st.session_state.current_video_id = video_id
                                         st.session_state.current_video_title = track["title"]
                                         st.session_state.current_playlist = tracks
-                                        st.session_state.current_playlist_index = i
+                                        st.session_state.current_track_index = i
                                         st.rerun()
                                 with col3:
                                     if st.button("Remove", key=f"remove_{playlist_name}_{i}"):
