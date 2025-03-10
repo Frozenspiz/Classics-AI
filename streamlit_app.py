@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 import io
 import base64
 import json
+from datetime import datetime
 
 # Set page configuration - must be the first Streamlit command
 st.set_page_config(
@@ -220,51 +221,26 @@ def extract_video_id(url):
 
 # Function to create embedded YouTube player
 def embed_youtube_video(video_id):
-    # Create a unique iframe ID to target with JavaScript
-    iframe_id = f"youtube_player_{video_id}"
-    
-    # Calculate current video duration for auto-advance (add 5 seconds buffer)
-    video_duration = get_video_duration(video_id)
-    
-    # Format for embed with autoplay functionality
+    # Simple, reliable YouTube embed
     embed_html = f"""
     <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);">
         <iframe 
-            id="{iframe_id}" 
             src="https://www.youtube.com/embed/{video_id}?autoplay=1&enablejsapi=1" 
             style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; border-radius: 10px;" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
             allowfullscreen>
         </iframe>
     </div>
-    
-    <script>
-        // Set up video duration tracking for auto-advance
-        setTimeout(function() {{
-            // Create and click a hidden button after video duration
-            var autoAdvanceButton = document.createElement('button');
-            autoAdvanceButton.style.display = 'none';
-            autoAdvanceButton.id = 'auto_advance_button';
-            autoAdvanceButton.innerText = 'Next';
-            document.body.appendChild(autoAdvanceButton);
-            
-            // Set timeout to click button after video finishes
-            setTimeout(function() {{
-                document.getElementById('auto_advance_button').click();
-            }}, {video_duration * 1000});
-        }}, 1000);
-    </script>
     """
-    
     return embed_html
 
 def get_video_duration(video_id):
-    """Get video duration in seconds, or return default if API fails."""
+    """Get video duration in seconds from YouTube API"""
+    youtube = get_youtube_api()
+    if not youtube:
+        return 180  # Default 3 minutes
+    
     try:
-        youtube = get_youtube_api()
-        if not youtube:
-            return 300  # Default 5 minutes
-            
         # Get video details including duration
         response = youtube.videos().list(
             part="contentDetails",
@@ -272,8 +248,8 @@ def get_video_duration(video_id):
         ).execute()
         
         if not response.get('items'):
-            return 300  # Default if video not found
-            
+            return 180  # Default if video not found
+        
         # Parse duration from ISO 8601 format (PT#M#S)
         duration_str = response['items'][0]['contentDetails']['duration']
         
@@ -281,23 +257,21 @@ def get_video_duration(video_id):
         minutes = 0
         seconds = 0
         
-        # Find minutes
         minutes_match = re.search(r'(\d+)M', duration_str)
         if minutes_match:
             minutes = int(minutes_match.group(1))
-            
-        # Find seconds
+        
         seconds_match = re.search(r'(\d+)S', duration_str)
         if seconds_match:
             seconds = int(seconds_match.group(1))
-            
-        # Calculate total seconds and add a buffer
-        total_seconds = (minutes * 60) + seconds + 2
+        
+        # Calculate total seconds
+        total_seconds = (minutes * 60) + seconds
         
         return total_seconds
     except Exception as e:
-        # If any error occurs, return a default duration
-        return 300  # Default 5 minutes
+        print(f"Error getting video duration: {e}")
+        return 180  # Default 3 minutes
 
 # Function to check for auto-play signal from JavaScript
 def check_for_autoplay():
@@ -471,8 +445,14 @@ def main():
     if "show_add_dialog" not in st.session_state:
         st.session_state.show_add_dialog = False
         
-    if "auto_advance" not in st.session_state:
-        st.session_state.auto_advance = False
+    if "auto_advance_enabled" not in st.session_state:
+        st.session_state.auto_advance_enabled = False
+        
+    if "last_play_time" not in st.session_state:
+        st.session_state.last_play_time = None
+        
+    if "current_video_duration" not in st.session_state:
+        st.session_state.current_video_duration = None
     
     # Apply classical theme styling
     apply_classical_theme()
@@ -499,16 +479,66 @@ def main():
         # Video player container
         player_container = st.empty()
         
-        # Auto-advance hidden button for the timer mechanism
-        if st.button("Auto Advance", key="auto_advance_button", help="This button is automatically clicked to advance to the next track", on_click=lambda: advance_to_next_track()):
-            # This will be triggered by JavaScript setTimeout
-            pass
-        
         # If a video is currently playing, display it
         if st.session_state.current_video_id:
             with player_container.container():
                 st.header(f"Now Playing: {st.session_state.current_video_title}")
+                
+                # Toggle for auto-advance feature
+                auto_advance = st.toggle("Auto-advance to next song", 
+                                        value=st.session_state.auto_advance_enabled,
+                                        help="When enabled, automatically plays the next song in the playlist")
+                
+                # Update session state if toggle changed
+                if auto_advance != st.session_state.auto_advance_enabled:
+                    st.session_state.auto_advance_enabled = auto_advance
+                    if auto_advance:
+                        # Record the current time when starting auto-advance
+                        st.session_state.last_play_time = datetime.now()
+                        # Get video duration if not already set
+                        if not st.session_state.current_video_duration:
+                            try:
+                                st.session_state.current_video_duration = get_video_duration(st.session_state.current_video_id)
+                            except:
+                                # Default duration if we can't get actual duration
+                                st.session_state.current_video_duration = 180  # 3 minutes default
+                
+                # Display the video
                 st.markdown(embed_youtube_video(st.session_state.current_video_id), unsafe_allow_html=True)
+                
+                # Handle auto-advance logic
+                if (st.session_state.auto_advance_enabled and 
+                    st.session_state.current_playlist and 
+                    st.session_state.last_play_time and
+                    st.session_state.current_video_duration):
+                    
+                    # Calculate time elapsed since video started
+                    time_elapsed = (datetime.now() - st.session_state.last_play_time).total_seconds()
+                    
+                    # Check if video should have finished (add 5 second buffer)
+                    if time_elapsed > st.session_state.current_video_duration + 5:
+                        # Time to advance to next track if possible
+                        if st.session_state.current_track_index < len(st.session_state.current_playlist) - 1:
+                            # Advance to next track
+                            st.session_state.current_track_index += 1
+                            next_track = st.session_state.current_playlist[st.session_state.current_track_index]
+                            video_id = extract_video_id(next_track["url"])
+                            st.session_state.current_video_id = video_id
+                            st.session_state.current_video_title = next_track["title"]
+                            
+                            # Update the play time and try to get new duration
+                            st.session_state.last_play_time = datetime.now()
+                            try:
+                                st.session_state.current_video_duration = get_video_duration(video_id)
+                            except:
+                                st.session_state.current_video_duration = 180  # 3 minutes default
+                            
+                            # Rerun to update the page
+                            st.rerun()
+                        else:
+                            # Reached end of playlist, disable auto-advance
+                            st.session_state.auto_advance_enabled = False
+                            st.warning("End of playlist reached")
                 
                 # If there's a playlist, show next/previous buttons
                 if st.session_state.current_playlist:
@@ -520,10 +550,33 @@ def main():
                             video_id = extract_video_id(prev_track["url"])
                             st.session_state.current_video_id = video_id
                             st.session_state.current_video_title = prev_track["title"]
+                            
+                            # Update tracking variables for auto-advance
+                            if st.session_state.auto_advance_enabled:
+                                st.session_state.last_play_time = datetime.now()
+                                try:
+                                    st.session_state.current_video_duration = get_video_duration(video_id)
+                                except:
+                                    st.session_state.current_video_duration = 180  # 3 minutes default
+                            
                             st.rerun()
                     with col2:
                         if st.button("Next ⏭️") and st.session_state.current_track_index < len(st.session_state.current_playlist) - 1:
-                            advance_to_next_track()
+                            st.session_state.current_track_index += 1
+                            next_track = st.session_state.current_playlist[st.session_state.current_track_index]
+                            video_id = extract_video_id(next_track["url"])
+                            st.session_state.current_video_id = video_id
+                            st.session_state.current_video_title = next_track["title"]
+                            
+                            # Update tracking variables for auto-advance
+                            if st.session_state.auto_advance_enabled:
+                                st.session_state.last_play_time = datetime.now()
+                                try:
+                                    st.session_state.current_video_duration = get_video_duration(video_id)
+                                except:
+                                    st.session_state.current_video_duration = 180  # 3 minutes default
+                            
+                            st.rerun()
         
         # Tabs
         tab1, tab2, tab3, tab4 = st.tabs(["Featured Playlists", "My Playlists", "ClassicsAI Channel", "Search"])
@@ -841,17 +894,6 @@ def main():
                         st.info("No results found")
             else:
                 st.error("YouTube API not initialized. Please check your API key.")
-
-def advance_to_next_track():
-    """Helper function to advance to the next track in the playlist"""
-    if (st.session_state.current_playlist and 
-            st.session_state.current_track_index < len(st.session_state.current_playlist) - 1):
-        st.session_state.current_track_index += 1
-        next_track = st.session_state.current_playlist[st.session_state.current_track_index]
-        video_id = extract_video_id(next_track["url"])
-        st.session_state.current_video_id = video_id
-        st.session_state.current_video_title = next_track["title"]
-        st.rerun()
 
 if __name__ == "__main__":
     main() 
