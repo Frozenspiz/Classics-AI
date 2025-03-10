@@ -12,12 +12,11 @@ import io
 import base64
 import json
 
-# Page configuration
+# Set page configuration - must be the first Streamlit command
 st.set_page_config(
     page_title="ClassicsAI Music Player",
     page_icon="🎵",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
 # Custom CSS for classical theme
@@ -221,18 +220,118 @@ def extract_video_id(url):
 
 # Function to create embedded YouTube player
 def embed_youtube_video(video_id):
-    return f"""
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background-color: #EAE6D9; border: 2px solid #D4AF37; border-radius: 8px;">
+    # Create a unique iframe ID to target with JavaScript
+    iframe_id = f"youtube_player_{video_id}"
+    
+    # Calculate current video duration for auto-advance (add 5 seconds buffer)
+    video_duration = get_video_duration(video_id)
+    
+    # Format for embed with autoplay functionality
+    embed_html = f"""
+    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);">
         <iframe 
-            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" 
-            src="https://www.youtube.com/embed/{video_id}" 
-            title="YouTube video player" 
-            frameborder="0" 
+            id="{iframe_id}" 
+            src="https://www.youtube.com/embed/{video_id}?autoplay=1&enablejsapi=1" 
+            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; border-radius: 10px;" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
             allowfullscreen>
         </iframe>
     </div>
+    
+    <script>
+        // Set up video duration tracking for auto-advance
+        setTimeout(function() {{
+            // Create and click a hidden button after video duration
+            var autoAdvanceButton = document.createElement('button');
+            autoAdvanceButton.style.display = 'none';
+            autoAdvanceButton.id = 'auto_advance_button';
+            autoAdvanceButton.innerText = 'Next';
+            document.body.appendChild(autoAdvanceButton);
+            
+            // Set timeout to click button after video finishes
+            setTimeout(function() {{
+                document.getElementById('auto_advance_button').click();
+            }}, {video_duration * 1000});
+        }}, 1000);
+    </script>
     """
+    
+    return embed_html
+
+def get_video_duration(video_id):
+    """Get video duration in seconds, or return default if API fails."""
+    try:
+        youtube = get_youtube_api()
+        if not youtube:
+            return 300  # Default 5 minutes
+            
+        # Get video details including duration
+        response = youtube.videos().list(
+            part="contentDetails",
+            id=video_id
+        ).execute()
+        
+        if not response.get('items'):
+            return 300  # Default if video not found
+            
+        # Parse duration from ISO 8601 format (PT#M#S)
+        duration_str = response['items'][0]['contentDetails']['duration']
+        
+        # Extract minutes and seconds
+        minutes = 0
+        seconds = 0
+        
+        # Find minutes
+        minutes_match = re.search(r'(\d+)M', duration_str)
+        if minutes_match:
+            minutes = int(minutes_match.group(1))
+            
+        # Find seconds
+        seconds_match = re.search(r'(\d+)S', duration_str)
+        if seconds_match:
+            seconds = int(seconds_match.group(1))
+            
+        # Calculate total seconds and add a buffer
+        total_seconds = (minutes * 60) + seconds + 2
+        
+        return total_seconds
+    except Exception as e:
+        # If any error occurs, return a default duration
+        return 300  # Default 5 minutes
+
+# Function to check for auto-play signal from JavaScript
+def check_for_autoplay():
+    # Inject JavaScript to check sessionStorage for auto-play signal
+    check_js = """
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const autoPlayData = sessionStorage.getItem('autoPlayNextTrack');
+            if (autoPlayData) {
+                const data = JSON.parse(autoPlayData);
+                if (data.isVideoEnded) {
+                    // Clear the data to prevent repeated auto-plays
+                    sessionStorage.removeItem('autoPlayNextTrack');
+                    
+                    // Use a hidden button click to trigger the next track
+                    setTimeout(function() {
+                        document.getElementById('autoplay_trigger_button').click();
+                    }, 100);
+                }
+            }
+        });
+    </script>
+    """
+    st.markdown(check_js, unsafe_allow_html=True)
+    
+    # Hidden button to trigger the next track
+    if st.button("AutoplayTrigger", key="autoplay_trigger_button", help="This button is automatically clicked to trigger autoplay", args=None):
+        if st.session_state.current_playlist and st.session_state.current_track_index < len(st.session_state.current_playlist) - 1:
+            st.session_state.current_track_index += 1
+            next_track = st.session_state.current_playlist[st.session_state.current_track_index]
+            video_id = extract_video_id(next_track["url"])
+            st.session_state.current_video_id = video_id
+            st.session_state.current_video_title = next_track["title"]
+            st.rerun()
 
 # Function to load and save playlists
 def load_playlists():
@@ -364,10 +463,19 @@ def main():
         st.session_state.current_video_title = None
         
     if "current_playlist" not in st.session_state:
-        st.session_state.current_playlist = []
+        st.session_state.current_playlist = None
         
     if "current_track_index" not in st.session_state:
         st.session_state.current_track_index = 0
+        
+    if "show_add_dialog" not in st.session_state:
+        st.session_state.show_add_dialog = False
+        
+    if "auto_advance" not in st.session_state:
+        st.session_state.auto_advance = False
+    
+    # Apply classical theme styling
+    apply_classical_theme()
     
     # Get authenticator
     authenticator = get_authenticator()
@@ -377,113 +485,45 @@ def main():
     # Authentication
     name, authentication_status, username = authenticator.login("Login", "main")
     
-    if authentication_status == False:
-        st.error("Username/password is incorrect")
-        
-        # Registration section
-        st.subheader("Don't have an account?")
-        
-        # Toggle between login and registration
-        if "show_register" not in st.session_state:
-            st.session_state.show_register = False
-            
-        if st.button("Register a new account" if not st.session_state.show_register else "Back to login"):
-            st.session_state.show_register = not st.session_state.show_register
-            st.rerun()
-            
-        if st.session_state.show_register:
-            with st.form("registration_form"):
-                st.subheader("Create a New Account")
-                
-                reg_username = st.text_input("Username", key="reg_username")
-                reg_email = st.text_input("Email", key="reg_email")
-                reg_password = st.text_input("Password", type="password", key="reg_password")
-                reg_password2 = st.text_input("Confirm Password", type="password", key="reg_password2")
-                
-                submit = st.form_submit_button("Register")
-                
-                if submit:
-                    if reg_password != reg_password2:
-                        st.error("Passwords do not match!")
-                    else:
-                        result = register_user(reg_username, reg_email, reg_password)
-                        if result:
-                            st.success("Registration successful! Please login.")
-                            st.session_state.show_register = False
-                            st.rerun()
-    
-    elif authentication_status == None:
-        st.warning("Please enter your username and password")
-        
-        # Registration section
-        st.subheader("Don't have an account?")
-        
-        # Toggle between login and registration
-        if "show_register" not in st.session_state:
-            st.session_state.show_register = False
-            
-        if st.button("Register a new account" if not st.session_state.show_register else "Back to login"):
-            st.session_state.show_register = not st.session_state.show_register
-            st.rerun()
-            
-        if st.session_state.show_register:
-            with st.form("registration_form"):
-                st.subheader("Create a New Account")
-                
-                reg_username = st.text_input("Username", key="reg_username")
-                reg_email = st.text_input("Email", key="reg_email")
-                reg_password = st.text_input("Password", type="password", key="reg_password")
-                reg_password2 = st.text_input("Confirm Password", type="password", key="reg_password2")
-                
-                submit = st.form_submit_button("Register")
-                
-                if submit:
-                    if reg_password != reg_password2:
-                        st.error("Passwords do not match!")
-                    else:
-                        result = register_user(reg_username, reg_email, reg_password)
-                        if result:
-                            st.success("Registration successful! Please login.")
-                            st.session_state.show_register = False
-                            st.rerun()
-    
-    else:
+    # Authenticated section
+    if authentication_status:
         # Welcome message
         st.success(f"Welcome, {name}!")
         
         # Logout button
         authenticator.logout("Logout", "main")
         
-        # Apply classical theme
-        apply_classical_theme()
-        
         # Create decorative header
         create_decorative_header()
         
+        # Video player container
+        player_container = st.empty()
+        
+        # Auto-advance hidden button for the timer mechanism
+        if st.button("Auto Advance", key="auto_advance_button", help="This button is automatically clicked to advance to the next track", on_click=lambda: advance_to_next_track()):
+            # This will be triggered by JavaScript setTimeout
+            pass
+        
         # If a video is currently playing, display it
         if st.session_state.current_video_id:
-            st.header(f"Now Playing: {st.session_state.current_video_title}")
-            embed_youtube_video(st.session_state.current_video_id)
-            
-            # If there's a playlist, show next/previous buttons
-            if st.session_state.current_playlist:
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("⏮️ Previous") and st.session_state.current_track_index > 0:
-                        st.session_state.current_track_index -= 1
-                        prev_track = st.session_state.current_playlist[st.session_state.current_track_index]
-                        video_id = extract_video_id(prev_track["url"])
-                        st.session_state.current_video_id = video_id
-                        st.session_state.current_video_title = prev_track["title"]
-                        st.rerun()
-                with col2:
-                    if st.button("Next ⏭️") and st.session_state.current_track_index < len(st.session_state.current_playlist) - 1:
-                        st.session_state.current_track_index += 1
-                        next_track = st.session_state.current_playlist[st.session_state.current_track_index]
-                        video_id = extract_video_id(next_track["url"])
-                        st.session_state.current_video_id = video_id
-                        st.session_state.current_video_title = next_track["title"]
-                        st.rerun()
+            with player_container.container():
+                st.header(f"Now Playing: {st.session_state.current_video_title}")
+                st.markdown(embed_youtube_video(st.session_state.current_video_id), unsafe_allow_html=True)
+                
+                # If there's a playlist, show next/previous buttons
+                if st.session_state.current_playlist:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("⏮️ Previous") and st.session_state.current_track_index > 0:
+                            st.session_state.current_track_index -= 1
+                            prev_track = st.session_state.current_playlist[st.session_state.current_track_index]
+                            video_id = extract_video_id(prev_track["url"])
+                            st.session_state.current_video_id = video_id
+                            st.session_state.current_video_title = prev_track["title"]
+                            st.rerun()
+                    with col2:
+                        if st.button("Next ⏭️") and st.session_state.current_track_index < len(st.session_state.current_playlist) - 1:
+                            advance_to_next_track()
         
         # Tabs
         tab1, tab2, tab3, tab4 = st.tabs(["Featured Playlists", "My Playlists", "ClassicsAI Channel", "Search"])
@@ -801,6 +841,17 @@ def main():
                         st.info("No results found")
             else:
                 st.error("YouTube API not initialized. Please check your API key.")
+
+def advance_to_next_track():
+    """Helper function to advance to the next track in the playlist"""
+    if (st.session_state.current_playlist and 
+            st.session_state.current_track_index < len(st.session_state.current_playlist) - 1):
+        st.session_state.current_track_index += 1
+        next_track = st.session_state.current_playlist[st.session_state.current_track_index]
+        video_id = extract_video_id(next_track["url"])
+        st.session_state.current_video_id = video_id
+        st.session_state.current_video_title = next_track["title"]
+        st.rerun()
 
 if __name__ == "__main__":
     main() 
