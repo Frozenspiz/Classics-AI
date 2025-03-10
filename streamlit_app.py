@@ -12,12 +12,11 @@ import io
 import base64
 import json
 
-# Page configuration
+# Set page configuration - must be the first Streamlit command
 st.set_page_config(
     page_title="ClassicsAI Music Player",
     page_icon="🎵",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
 # Custom CSS for classical theme
@@ -456,13 +455,6 @@ def main():
         
     if "show_add_dialog" not in st.session_state:
         st.session_state.show_add_dialog = False
-    
-    # Set up app config
-    st.set_page_config(
-        page_title="ClassicsAI Music Player",
-        page_icon="🎵",
-        layout="wide"
-    )
     
     # Apply classical theme styling
     apply_classical_theme()
