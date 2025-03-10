@@ -11,7 +11,10 @@ from PIL import Image, ImageDraw, ImageFont
 import io
 import base64
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
+import hashlib
+import pickle
+import subprocess
 
 # Set page configuration - must be the first Streamlit command
 st.set_page_config(
@@ -219,7 +222,7 @@ def extract_video_id(url):
     match = re.search(pattern, url)
     return match.group(1) if match else None
 
-# Function to create embedded YouTube player
+# Function to create embedded YouTube player with auto-advance capability
 def embed_youtube_video(video_id):
     """Create an embedded YouTube player with auto-advance capability"""
     embed_html = f"""
@@ -235,6 +238,7 @@ def embed_youtube_video(video_id):
     """
     return embed_html
 
+# Function to get video duration
 def get_video_duration(video_id):
     """Get video duration in seconds from YouTube API"""
     youtube = get_youtube_api()
@@ -452,8 +456,11 @@ def main():
     if "auto_advance" not in st.session_state:
         st.session_state.auto_advance = False
         
-    if "last_update_time" not in st.session_state:
-        st.session_state.last_update_time = datetime.now()
+    if "play_start_time" not in st.session_state:
+        st.session_state.play_start_time = None
+        
+    if "current_video_duration" not in st.session_state:
+        st.session_state.current_video_duration = None
     
     # Apply classical theme styling
     apply_classical_theme()
@@ -477,6 +484,49 @@ def main():
         # Create decorative header
         create_decorative_header()
         
+        # Active auto-refresh if auto-advance is enabled
+        # This makes the page refresh every few seconds to check if the song should advance
+        if st.session_state.auto_advance and st.session_state.current_video_id:
+            # Setup auto-refresh using JavaScript
+            refresh_interval = 10  # Check every 10 seconds
+            st.markdown(
+                f"""
+                <script>
+                    setTimeout(function() {{
+                        window.location.reload();
+                    }}, {refresh_interval * 1000});
+                </script>
+                """,
+                unsafe_allow_html=True
+            )
+            
+            # Check if it's time to advance to the next track
+            if (st.session_state.play_start_time and 
+                st.session_state.current_video_duration and 
+                st.session_state.current_playlist and
+                st.session_state.current_track_index < len(st.session_state.current_playlist) - 1):
+                
+                # Calculate elapsed time since song started
+                elapsed_time = (datetime.now() - st.session_state.play_start_time).total_seconds()
+                
+                # Add a small buffer (5 seconds) to the duration to ensure the song finishes
+                if elapsed_time > st.session_state.current_video_duration + 5:
+                    # Time to advance to the next track
+                    st.session_state.current_track_index += 1
+                    next_track = st.session_state.current_playlist[st.session_state.current_track_index]
+                    video_id = extract_video_id(next_track["url"])
+                    st.session_state.current_video_id = video_id
+                    st.session_state.current_video_title = next_track["title"]
+                    
+                    # Get the new video duration
+                    try:
+                        st.session_state.current_video_duration = get_video_duration(video_id)
+                    except:
+                        st.session_state.current_video_duration = 180  # Default to 3 minutes
+                    
+                    # Reset the start time for the new track
+                    st.session_state.play_start_time = datetime.now()
+        
         # If a video is currently playing, display it
         if st.session_state.current_video_id:
             st.header(f"Now Playing: {st.session_state.current_video_title}")
@@ -489,7 +539,35 @@ def main():
             # Update the auto-advance state
             if auto_advance != st.session_state.auto_advance:
                 st.session_state.auto_advance = auto_advance
-                st.session_state.last_update_time = datetime.now()
+                
+                # If auto-advance is turned on, initialize tracking variables
+                if auto_advance:
+                    st.session_state.play_start_time = datetime.now()
+                    
+                    # Get video duration if not already set
+                    if not st.session_state.current_video_duration:
+                        try:
+                            st.session_state.current_video_duration = get_video_duration(st.session_state.current_video_id)
+                        except:
+                            # Default duration if we can't get actual duration
+                            st.session_state.current_video_duration = 180  # 3 minutes default
+                
+                # Force a page reload to activate/deactivate auto-refresh
+                st.rerun()
+            
+            # Debug info for auto-advance (uncomment if needed for troubleshooting)
+            if st.session_state.auto_advance and st.session_state.current_playlist:
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.session_state.play_start_time:
+                        elapsed = (datetime.now() - st.session_state.play_start_time).total_seconds()
+                        st.info(f"Elapsed: {int(elapsed)} sec / Duration: {st.session_state.current_video_duration} sec")
+                with col2:
+                    remaining = st.session_state.current_video_duration - (datetime.now() - st.session_state.play_start_time).total_seconds()
+                    if remaining > 0:
+                        st.info(f"Next song in approximately {int(remaining)} seconds")
+                    else:
+                        st.info("Advancing to next song shortly...")
             
             # Display the embedded player
             st.markdown(embed_youtube_video(st.session_state.current_video_id), unsafe_allow_html=True)
@@ -504,7 +582,14 @@ def main():
                         video_id = extract_video_id(prev_track["url"])
                         st.session_state.current_video_id = video_id
                         st.session_state.current_video_title = prev_track["title"]
-                        st.session_state.last_update_time = datetime.now()
+                        
+                        # Reset tracking variables
+                        st.session_state.play_start_time = datetime.now()
+                        try:
+                            st.session_state.current_video_duration = get_video_duration(video_id)
+                        except:
+                            st.session_state.current_video_duration = 180
+                            
                         st.rerun()
                 with col2:
                     next_button = st.button("Next ⏭️")
@@ -514,24 +599,14 @@ def main():
                         video_id = extract_video_id(next_track["url"])
                         st.session_state.current_video_id = video_id
                         st.session_state.current_video_title = next_track["title"]
-                        st.session_state.last_update_time = datetime.now()
-                        st.rerun()
-                
-                # Very simple auto-advance implementation
-                # If auto-advance is enabled and a reasonable time has passed (4-5 minutes), go to next track
-                if (st.session_state.auto_advance and 
-                    st.session_state.current_track_index < len(st.session_state.current_playlist) - 1):
-                    # Calculate time since last update (approximate song length)
-                    time_since_update = (datetime.now() - st.session_state.last_update_time).total_seconds()
-                    # Check if enough time has passed (4 minutes as a default song length)
-                    if time_since_update > 240:  # 4 minutes in seconds
-                        # Time to advance to next track
-                        st.session_state.current_track_index += 1
-                        next_track = st.session_state.current_playlist[st.session_state.current_track_index]
-                        video_id = extract_video_id(next_track["url"])
-                        st.session_state.current_video_id = video_id
-                        st.session_state.current_video_title = next_track["title"]
-                        st.session_state.last_update_time = datetime.now()
+                        
+                        # Reset tracking variables
+                        st.session_state.play_start_time = datetime.now()
+                        try:
+                            st.session_state.current_video_duration = get_video_duration(video_id)
+                        except:
+                            st.session_state.current_video_duration = 180
+                            
                         st.rerun()
         
         # Create tabs
@@ -553,6 +628,14 @@ def main():
                             video_id = extract_video_id(first_track["url"])
                             st.session_state.current_video_id = video_id
                             st.session_state.current_video_title = first_track["title"]
+                            
+                            # Set up tracking for auto-advance
+                            st.session_state.play_start_time = datetime.now()
+                            try:
+                                st.session_state.current_video_duration = get_video_duration(video_id)
+                            except:
+                                st.session_state.current_video_duration = 180
+                            
                             st.rerun()
                         
                         if st.button(f"Add to My Playlists: {playlist_name}", key=f"add_playlist_{playlist_name}"):
@@ -579,6 +662,14 @@ def main():
                                     st.session_state.current_video_title = track["title"]
                                     st.session_state.current_playlist = tracks
                                     st.session_state.current_track_index = i
+                                    
+                                    # Set up tracking for auto-advance
+                                    st.session_state.play_start_time = datetime.now()
+                                    try:
+                                        st.session_state.current_video_duration = get_video_duration(video_id)
+                                    except:
+                                        st.session_state.current_video_duration = 180
+                                    
                                     st.rerun()
                             with col3:
                                 if st.button("Add to My Playlists", key=f"add_track_{playlist_name}_{i}"):
@@ -633,6 +724,14 @@ def main():
                                 video_id = extract_video_id(first_track["url"])
                                 st.session_state.current_video_id = video_id
                                 st.session_state.current_video_title = first_track["title"]
+                                
+                                # Set up tracking for auto-advance
+                                st.session_state.play_start_time = datetime.now()
+                                try:
+                                    st.session_state.current_video_duration = get_video_duration(video_id)
+                                except:
+                                    st.session_state.current_video_duration = 180
+                                
                                 st.rerun()
                             
                             for i, track in enumerate(tracks):
@@ -646,6 +745,14 @@ def main():
                                         st.session_state.current_video_title = track["title"]
                                         st.session_state.current_playlist = tracks
                                         st.session_state.current_track_index = i
+                                        
+                                        # Set up tracking for auto-advance
+                                        st.session_state.play_start_time = datetime.now()
+                                        try:
+                                            st.session_state.current_video_duration = get_video_duration(video_id)
+                                        except:
+                                            st.session_state.current_video_duration = 180
+                                        
                                         st.rerun()
                                 with col3:
                                     if st.button("Remove", key=f"remove_{playlist_name}_{i}"):
