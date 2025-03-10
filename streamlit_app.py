@@ -224,7 +224,7 @@ def extract_video_id(url):
 
 # Function to create embedded YouTube player with auto-advance capability
 def embed_youtube_video(video_id):
-    """Create an embedded YouTube player with auto-advance capability"""
+    """Create an embedded YouTube player with auto-advance capability using YouTube IFrame API"""
     embed_html = f"""
     <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);">
         <iframe 
@@ -235,6 +235,23 @@ def embed_youtube_video(video_id):
             allowfullscreen>
         </iframe>
     </div>
+    <script>
+        var player;
+        function onYouTubeIframeAPIReady() {{
+            player = new YT.Player('youtube_player_{video_id}', {{
+                events: {{
+                    'onStateChange': onPlayerStateChange
+                }}
+            }});
+        }}
+        function onPlayerStateChange(event) {{
+            if (event.data == YT.PlayerState.ENDED) {{
+                // Trigger the next track in the playlist
+                document.getElementById('autoplay_trigger_button').click();
+            }}
+        }}
+    </script>
+    <script src="https://www.youtube.com/iframe_api"></script>
     """
     return embed_html
 
