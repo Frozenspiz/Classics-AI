@@ -4,8 +4,6 @@ import yaml
 from yaml.loader import SafeLoader
 import os
 import re
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 import pytube
 from PIL import Image, ImageDraw, ImageFont
 import io
@@ -180,39 +178,6 @@ def get_authenticator():
         st.error("Configuration file not found. Please create a config.yaml file.")
         return None
 
-# YouTube API setup
-def get_youtube_api():
-    try:
-        # Try to get API key from environment variable
-        api_key = os.environ.get("YOUTUBE_API_KEY")
-        
-        # If not found in environment, check Streamlit secrets
-        if not api_key and hasattr(st, 'secrets') and 'YOUTUBE_API_KEY' in st.secrets:
-            api_key = st.secrets["YOUTUBE_API_KEY"]
-            
-        # If still not found, show a clear error message
-        if not api_key:
-            st.error("""
-            YouTube API key not found. Please set up your API key using one of these methods:
-            
-            1. Set an environment variable named YOUTUBE_API_KEY
-            2. Add it to your Streamlit secrets.toml file
-            3. Deploy to Streamlit Cloud and add YOUTUBE_API_KEY to your app secrets
-            
-            To get a YouTube API key:
-            1. Go to https://console.cloud.google.com/
-            2. Create a project
-            3. Enable the YouTube Data API v3
-            4. Create an API key
-            """)
-            return None
-            
-        youtube = build("youtube", "v3", developerKey=api_key)
-        return youtube
-    except Exception as e:
-        st.error(f"Error initializing YouTube API: {str(e)}")
-        return None
-
 # Extract video ID from YouTube URL
 def extract_video_id(url):
     pattern = r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})'
@@ -284,72 +249,6 @@ def get_featured_playlists():
             {"url": "https://www.youtube.com/watch?v=D3UeW2j6Klw", "title": "Mozart - New Violin Concerto 08"}
         ]
     }
-
-# Function to get YouTube channel ID from settings
-def get_channel_id():
-    return "UCMCX1aTQvca5zYHGRYnmgXw"  # Correct channel ID for ClassicsAI
-
-# Function to search ClassicsAI YouTube channel
-def search_channel(youtube, query, max_results=10):
-    if not youtube:
-        return []
-    
-    try:
-        # Get channel ID from settings
-        channel_id = get_channel_id()
-        
-        search_response = youtube.search().list(
-            q=query,
-            channelId=channel_id,
-            part="snippet",
-            maxResults=max_results,
-            type="video"
-        ).execute()
-        
-        return search_response.get("items", [])
-    except HttpError as e:
-        st.error(f"An error occurred: {e}")
-        return []
-
-# Function to get channel videos
-def get_channel_videos(youtube, max_results=10, page_token=None):
-    if not youtube:
-        return [], None
-
-    channel_id = get_channel_id()
-
-    try:
-        # Fetch videos from the channel using the channel ID
-        search_response = youtube.search().list(
-            part="snippet",
-            channelId=channel_id,
-            maxResults=max_results,
-            type="video",
-            order="date",
-            pageToken=page_token
-        ).execute()
-
-        items = search_response.get("items", [])
-        next_page_token = search_response.get("nextPageToken")
-
-        # Transform search results
-        transformed_items = []
-        for item in items:
-            transformed_item = {
-                "snippet": {
-                    "resourceId": {"videoId": item["id"]["videoId"]},
-                    "title": item["snippet"]["title"],
-                    "thumbnails": item["snippet"]["thumbnails"],
-                    "publishedAt": item["snippet"]["publishedAt"]
-                }
-            }
-            transformed_items.append(transformed_item)
-
-        return transformed_items, next_page_token
-
-    except HttpError as e:
-        st.error(f"An error occurred: {e}")
-        return [], None
 
 # Main application
 def main():
@@ -512,8 +411,8 @@ def main():
         if st.session_state.current_video_id:
             st.markdown(embed_youtube_video(st.session_state.current_video_id), unsafe_allow_html=True)
         
-        # Tabs for different sections
-        tab1, tab2, tab3, tab4 = st.tabs(["Featured Playlists", "My Playlists", "Channel Browser", "Search"])
+        # Tabs for different sections - removed Channel Browser and Search tabs
+        tab1, tab2 = st.tabs(["Featured Playlists", "My Playlists"])
         
         # Tab 1: Featured Playlists
         with tab1:
@@ -635,137 +534,6 @@ def main():
                             st.info("This playlist is empty")
             else:
                 st.info("You don't have any playlists yet")
-        
-        # Tab 3: Channel Browser
-        with tab3:
-            st.header("ClassicsAI Channel Browser")
-            
-            youtube = get_youtube_api()
-            if youtube:
-                # Initialize pagination
-                if "channel_page_token" not in st.session_state:
-                    st.session_state.channel_page_token = None
-
-                # Get channel videos
-                channel_videos, next_page_token = get_channel_videos(youtube, page_token=st.session_state.channel_page_token)
-
-                if channel_videos:
-                    for i, item in enumerate(channel_videos):
-                        video = item["snippet"]
-                        video_id = video["resourceId"]["videoId"]
-                        title = video["title"]
-                        thumbnail = video["thumbnails"]["medium"]["url"]
-                        published_at = video["publishedAt"][:10]  # Just the date
-                        
-                        col1, col2 = st.columns([1, 3])
-                        with col1:
-                            st.image(thumbnail, use_container_width=True)
-                        with col2:
-                            st.markdown(f"**{title}**")
-                            st.write(f"Published: {published_at}")
-                            
-                            btn_col1, btn_col2, btn_col3 = st.columns(3)
-                            with btn_col1:
-                                if st.button("Play", key=f"play_channel_{i}"):
-                                    st.session_state.current_video_id = video_id
-                                    st.session_state.current_video_title = title
-                                    st.rerun()
-                            
-                            with btn_col2:
-                                # Add to playlist button
-                                if st.session_state.user_playlists:
-                                    if st.button("Add to Playlist", key=f"add_channel_{i}"):
-                                        st.session_state.temp_video = {
-                                            "url": f"https://www.youtube.com/watch?v={video_id}",
-                                            "title": title
-                                        }
-                                        st.session_state.show_add_dialog = True
-                                        st.rerun()
-                        
-                        st.markdown("---")
-                    
-                    # Pagination controls
-                    if next_page_token:
-                        if st.button("Load More"):
-                            st.session_state.channel_page_token = next_page_token
-                            st.rerun()
-
-                    # Dialog for adding to playlist
-                    if "show_add_dialog" in st.session_state and st.session_state.show_add_dialog:
-                        with st.form("add_to_playlist_form"):
-                            st.subheader("Add to Playlist")
-                            playlist_names = list(st.session_state.user_playlists.keys())
-                            selected_playlist = st.selectbox("Select Playlist", playlist_names)
-                            
-                            submitted = st.form_submit_button("Add")
-                            cancel = st.form_submit_button("Cancel")
-                            
-                            if submitted:
-                                st.session_state.user_playlists[selected_playlist].append(st.session_state.temp_video)
-                                save_playlists(st.session_state.user_playlists)
-                                st.success(f"Added to '{selected_playlist}'!")
-                                st.session_state.show_add_dialog = False
-                                st.rerun()
-                            
-                            if cancel:
-                                st.session_state.show_add_dialog = False
-                                st.rerun()
-                else:
-                    st.info("No videos found in the channel")
-            else:
-                st.error("YouTube API not initialized. Please check your API key.")
-        
-        # Tab 4: Search
-        with tab4:
-            st.header("Search ClassicsAI Channel")
-            
-            youtube = get_youtube_api()
-            if youtube:
-                search_query = st.text_input("Search for videos", key="search_query")
-                
-                if st.button("Search") and search_query:
-                    search_results = search_channel(youtube, search_query)
-                    
-                    if search_results:
-                        st.subheader("Search Results")
-                        
-                        for i, item in enumerate(search_results):
-                            video = item["snippet"]
-                            video_id = item["id"]["videoId"]
-                            title = video["title"]
-                            description = video["description"]
-                            thumbnail = video["thumbnails"]["medium"]["url"]
-                            
-                            col1, col2 = st.columns([1, 3])
-                            with col1:
-                                st.image(thumbnail, use_container_width=True)
-                            with col2:
-                                st.markdown(f"**{title}**")
-                                st.write(description[:100] + "..." if len(description) > 100 else description)
-                                
-                                btn_col1, btn_col2 = st.columns(2)
-                                with btn_col1:
-                                    if st.button("Play", key=f"play_search_{i}"):
-                                        st.session_state.current_video_id = video_id
-                                        st.session_state.current_video_title = title
-                                        st.rerun()
-                                
-                                with btn_col2:
-                                    # Add to playlist button
-                                    if st.session_state.user_playlists:
-                                        if st.button("Add to Playlist", key=f"add_search_{i}"):
-                                            st.session_state.temp_video = {
-                                                "url": f"https://www.youtube.com/watch?v={video_id}",
-                                                "title": title
-                                            }
-                                            st.session_state.show_add_dialog = True
-                                            st.rerun()
-                            
-                            st.markdown("---")
-                    else:
-                        st.info("No results found")
-            else:
-                st.error("YouTube API not initialized. Please check your API key.")
 
 if __name__ == "__main__":
     main() 
