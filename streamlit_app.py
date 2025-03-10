@@ -11,16 +11,13 @@ from PIL import Image, ImageDraw, ImageFont
 import io
 import base64
 import json
-from datetime import datetime, timedelta
-import hashlib
-import pickle
-import subprocess
 
-# Set page configuration - must be the first Streamlit command
+# Page configuration
 st.set_page_config(
     page_title="ClassicsAI Music Player",
     page_icon="🎵",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # Custom CSS for classical theme
@@ -222,112 +219,20 @@ def extract_video_id(url):
     match = re.search(pattern, url)
     return match.group(1) if match else None
 
-# Function to create embedded YouTube player with auto-advance capability
+# Function to create embedded YouTube player
 def embed_youtube_video(video_id):
-    """Create an embedded YouTube player with auto-advance capability using YouTube IFrame API"""
-    embed_html = f"""
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);">
+    return f"""
+    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background-color: #EAE6D9; border: 2px solid #D4AF37; border-radius: 8px;">
         <iframe 
-            id="youtube_player_{video_id}"
-            src="https://www.youtube.com/embed/{video_id}?autoplay=1&enablejsapi=1&rel=0" 
-            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; border-radius: 10px;" 
+            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" 
+            src="https://www.youtube.com/embed/{video_id}" 
+            title="YouTube video player" 
+            frameborder="0" 
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
             allowfullscreen>
         </iframe>
     </div>
-    <script>
-        var player;
-        function onYouTubeIframeAPIReady() {{
-            player = new YT.Player('youtube_player_{video_id}', {{
-                events: {{
-                    'onStateChange': onPlayerStateChange
-                }}
-            }});
-        }}
-        function onPlayerStateChange(event) {{
-            if (event.data == YT.PlayerState.ENDED) {{
-                // Trigger the next track in the playlist
-                document.getElementById('autoplay_trigger_button').click();
-            }}
-        }}
-    </script>
-    <script src="https://www.youtube.com/iframe_api"></script>
     """
-    return embed_html
-
-# Function to get video duration
-def get_video_duration(video_id):
-    """Get video duration in seconds from YouTube API"""
-    youtube = get_youtube_api()
-    if not youtube:
-        return 180  # Default 3 minutes
-    
-    try:
-        # Get video details including duration
-        response = youtube.videos().list(
-            part="contentDetails",
-            id=video_id
-        ).execute()
-        
-        if not response.get('items'):
-            return 180  # Default if video not found
-        
-        # Parse duration from ISO 8601 format (PT#M#S)
-        duration_str = response['items'][0]['contentDetails']['duration']
-        
-        # Extract minutes and seconds
-        minutes = 0
-        seconds = 0
-        
-        minutes_match = re.search(r'(\d+)M', duration_str)
-        if minutes_match:
-            minutes = int(minutes_match.group(1))
-        
-        seconds_match = re.search(r'(\d+)S', duration_str)
-        if seconds_match:
-            seconds = int(seconds_match.group(1))
-        
-        # Calculate total seconds
-        total_seconds = (minutes * 60) + seconds
-        
-        return total_seconds
-    except Exception as e:
-        print(f"Error getting video duration: {e}")
-        return 180  # Default 3 minutes
-
-# Function to check for auto-play signal from JavaScript
-def check_for_autoplay():
-    # Inject JavaScript to check sessionStorage for auto-play signal
-    check_js = """
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const autoPlayData = sessionStorage.getItem('autoPlayNextTrack');
-            if (autoPlayData) {
-                const data = JSON.parse(autoPlayData);
-                if (data.isVideoEnded) {
-                    // Clear the data to prevent repeated auto-plays
-                    sessionStorage.removeItem('autoPlayNextTrack');
-                    
-                    // Use a hidden button click to trigger the next track
-                    setTimeout(function() {
-                        document.getElementById('autoplay_trigger_button').click();
-                    }, 100);
-                }
-            }
-        });
-    </script>
-    """
-    st.markdown(check_js, unsafe_allow_html=True)
-    
-    # Hidden button to trigger the next track
-    if st.button("AutoplayTrigger", key="autoplay_trigger_button", help="This button is automatically clicked to trigger autoplay", args=None):
-        if st.session_state.current_playlist and st.session_state.current_track_index < len(st.session_state.current_playlist) - 1:
-            st.session_state.current_track_index += 1
-            next_track = st.session_state.current_playlist[st.session_state.current_track_index]
-            video_id = extract_video_id(next_track["url"])
-            st.session_state.current_video_id = video_id
-            st.session_state.current_video_title = next_track["title"]
-            st.rerun()
 
 # Function to load and save playlists
 def load_playlists():
@@ -448,7 +353,7 @@ def get_channel_videos(youtube, max_results=10, page_token=None):
 
 # Main application
 def main():
-    # Initialize session state variables
+    # Initialize session state for playlists if not exists
     if "user_playlists" not in st.session_state:
         st.session_state.user_playlists = load_playlists()
     
@@ -459,28 +364,10 @@ def main():
         st.session_state.current_video_title = None
         
     if "current_playlist" not in st.session_state:
-        st.session_state.current_playlist = None
+        st.session_state.current_playlist = []
         
     if "current_track_index" not in st.session_state:
         st.session_state.current_track_index = 0
-        
-    if "show_add_dialog" not in st.session_state:
-        st.session_state.show_add_dialog = False
-        
-    if "temp_video" not in st.session_state:
-        st.session_state.temp_video = None
-        
-    if "auto_advance" not in st.session_state:
-        st.session_state.auto_advance = False
-        
-    if "play_start_time" not in st.session_state:
-        st.session_state.play_start_time = None
-        
-    if "current_video_duration" not in st.session_state:
-        st.session_state.current_video_duration = None
-    
-    # Apply classical theme styling
-    apply_classical_theme()
     
     # Get authenticator
     authenticator = get_authenticator()
@@ -490,144 +377,143 @@ def main():
     # Authentication
     name, authentication_status, username = authenticator.login("Login", "main")
     
-    # Authenticated section
-    if authentication_status:
-        # Welcome message
-        st.success(f"Welcome, {name}!")
+    if authentication_status == False:
+        st.error("Username/password is incorrect")
         
-        # Logout button
-        authenticator.logout("Logout", "main")
+        # Registration section
+        st.subheader("Don't have an account?")
         
-        # Create decorative header
+        # Toggle between login and registration
+        if "show_register" not in st.session_state:
+            st.session_state.show_register = False
+            
+        if st.button("Register a new account" if not st.session_state.show_register else "Back to login"):
+            st.session_state.show_register = not st.session_state.show_register
+            st.rerun()
+            
+        if st.session_state.show_register:
+            with st.form("registration_form"):
+                st.subheader("Create a New Account")
+                
+                reg_username = st.text_input("Username", key="reg_username")
+                reg_email = st.text_input("Email", key="reg_email")
+                reg_password = st.text_input("Password", type="password", key="reg_password")
+                reg_password2 = st.text_input("Confirm Password", type="password", key="reg_password2")
+                
+                submit = st.form_submit_button("Register")
+                
+                if submit:
+                    if not reg_username or not reg_email or not reg_password:
+                        st.error("All fields are required")
+                    elif not re.match(r"[^@]+@[^@]+\.[^@]+", reg_email):
+                        st.error("Please enter a valid email address")
+                    elif len(reg_password) < 6:
+                        st.error("Password must be at least 6 characters long")
+                    elif reg_password != reg_password2:
+                        st.error("Passwords do not match")
+                    else:
+                        success, message = register_user(reg_username, reg_email, reg_password)
+                        if success:
+                            st.success(message)
+                            st.info("You can now log in with your new account")
+                            st.session_state.show_register = False
+                            st.rerun()
+                        else:
+                            st.error(message)
+        
+    elif authentication_status == None:
+        st.warning("Please enter your username and password")
+        
+        # Registration section
+        st.subheader("Don't have an account?")
+        
+        # Toggle between login and registration
+        if "show_register" not in st.session_state:
+            st.session_state.show_register = False
+            
+        if st.button("Register a new account" if not st.session_state.show_register else "Back to login"):
+            st.session_state.show_register = not st.session_state.show_register
+            st.rerun()
+            
+        if st.session_state.show_register:
+            with st.form("registration_form"):
+                st.subheader("Create a New Account")
+                
+                reg_username = st.text_input("Username", key="reg_username")
+                reg_email = st.text_input("Email", key="reg_email")
+                reg_password = st.text_input("Password", type="password", key="reg_password")
+                reg_password2 = st.text_input("Confirm Password", type="password", key="reg_password2")
+                
+                submit = st.form_submit_button("Register")
+                
+                if submit:
+                    if not reg_username or not reg_email or not reg_password:
+                        st.error("All fields are required")
+                    elif not re.match(r"[^@]+@[^@]+\.[^@]+", reg_email):
+                        st.error("Please enter a valid email address")
+                    elif len(reg_password) < 6:
+                        st.error("Password must be at least 6 characters long")
+                    elif reg_password != reg_password2:
+                        st.error("Passwords do not match")
+                    else:
+                        success, message = register_user(reg_username, reg_email, reg_password)
+                        if success:
+                            st.success(message)
+                            st.info("You can now log in with your new account")
+                            st.session_state.show_register = False
+                            st.rerun()
+                        else:
+                            st.error(message)
+        
+    elif authentication_status:
+        # Sidebar
+        with st.sidebar:
+            st.subheader(f"Welcome, {name}")
+            authenticator.logout("Logout", "sidebar")
+            
+            st.subheader("Now Playing")
+            if st.session_state.current_video_id and st.session_state.current_video_title:
+                st.write(f"**{st.session_state.current_video_title}**")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    if st.button("⏮ Previous"):
+                        if st.session_state.current_playlist and st.session_state.current_track_index > 0:
+                            st.session_state.current_track_index -= 1
+                            track = st.session_state.current_playlist[st.session_state.current_track_index]
+                            video_id = extract_video_id(track["url"])
+                            st.session_state.current_video_id = video_id
+                            st.session_state.current_video_title = track["title"]
+                            st.rerun()
+                
+                with col2:
+                    if st.button("⏹ Stop"):
+                        st.session_state.current_video_id = None
+                        st.session_state.current_video_title = None
+                        st.rerun()
+                
+                with col3:
+                    if st.button("⏭ Next"):
+                        if (st.session_state.current_playlist and 
+                            st.session_state.current_track_index < len(st.session_state.current_playlist) - 1):
+                            st.session_state.current_track_index += 1
+                            track = st.session_state.current_playlist[st.session_state.current_track_index]
+                            video_id = extract_video_id(track["url"])
+                            st.session_state.current_video_id = video_id
+                            st.session_state.current_video_title = track["title"]
+                            st.rerun()
+            else:
+                st.write("No track playing")
+        
+        # Main content
         create_decorative_header()
         
-        # Active auto-refresh if auto-advance is enabled
-        # This makes the page refresh every few seconds to check if the song should advance
-        if st.session_state.auto_advance and st.session_state.current_video_id:
-            # Setup auto-refresh using JavaScript
-            refresh_interval = 10  # Check every 10 seconds
-            st.markdown(
-                f"""
-                <script>
-                    setTimeout(function() {{
-                        window.location.reload();
-                    }}, {refresh_interval * 1000});
-                </script>
-                """,
-                unsafe_allow_html=True
-            )
-            
-            # Check if it's time to advance to the next track
-            if (st.session_state.play_start_time and 
-                st.session_state.current_video_duration and 
-                st.session_state.current_playlist and
-                st.session_state.current_track_index < len(st.session_state.current_playlist) - 1):
-                
-                # Calculate elapsed time since song started
-                elapsed_time = (datetime.now() - st.session_state.play_start_time).total_seconds()
-                
-                # Add a small buffer (5 seconds) to the duration to ensure the song finishes
-                if elapsed_time > st.session_state.current_video_duration + 5:
-                    # Time to advance to the next track
-                    st.session_state.current_track_index += 1
-                    next_track = st.session_state.current_playlist[st.session_state.current_track_index]
-                    video_id = extract_video_id(next_track["url"])
-                    st.session_state.current_video_id = video_id
-                    st.session_state.current_video_title = next_track["title"]
-                    
-                    # Get the new video duration
-                    try:
-                        st.session_state.current_video_duration = get_video_duration(video_id)
-                    except:
-                        st.session_state.current_video_duration = 180  # Default to 3 minutes
-                    
-                    # Reset the start time for the new track
-                    st.session_state.play_start_time = datetime.now()
-        
-        # If a video is currently playing, display it
+        # Video player
         if st.session_state.current_video_id:
-            st.header(f"Now Playing: {st.session_state.current_video_title}")
-            
-            # Simple toggle for auto-advance
-            auto_advance = st.checkbox("Auto-advance to next song", 
-                                    value=st.session_state.auto_advance,
-                                    help="When enabled, automatically plays the next song in the playlist")
-            
-            # Update the auto-advance state
-            if auto_advance != st.session_state.auto_advance:
-                st.session_state.auto_advance = auto_advance
-                
-                # If auto-advance is turned on, initialize tracking variables
-                if auto_advance:
-                    st.session_state.play_start_time = datetime.now()
-                    
-                    # Get video duration if not already set
-                    if not st.session_state.current_video_duration:
-                        try:
-                            st.session_state.current_video_duration = get_video_duration(st.session_state.current_video_id)
-                        except:
-                            # Default duration if we can't get actual duration
-                            st.session_state.current_video_duration = 180  # 3 minutes default
-                
-                # Force a page reload to activate/deactivate auto-refresh
-                st.rerun()
-            
-            # Debug info for auto-advance (uncomment if needed for troubleshooting)
-            if st.session_state.auto_advance and st.session_state.current_playlist:
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.session_state.play_start_time:
-                        elapsed = (datetime.now() - st.session_state.play_start_time).total_seconds()
-                        st.info(f"Elapsed: {int(elapsed)} sec / Duration: {st.session_state.current_video_duration} sec")
-                with col2:
-                    remaining = st.session_state.current_video_duration - (datetime.now() - st.session_state.play_start_time).total_seconds()
-                    if remaining > 0:
-                        st.info(f"Next song in approximately {int(remaining)} seconds")
-                    else:
-                        st.info("Advancing to next song shortly...")
-            
-            # Display the embedded player
             st.markdown(embed_youtube_video(st.session_state.current_video_id), unsafe_allow_html=True)
-            
-            # If there's a playlist, show next/previous buttons
-            if st.session_state.current_playlist:
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("⏮️ Previous") and st.session_state.current_track_index > 0:
-                        st.session_state.current_track_index -= 1
-                        prev_track = st.session_state.current_playlist[st.session_state.current_track_index]
-                        video_id = extract_video_id(prev_track["url"])
-                        st.session_state.current_video_id = video_id
-                        st.session_state.current_video_title = prev_track["title"]
-                        
-                        # Reset tracking variables
-                        st.session_state.play_start_time = datetime.now()
-                        try:
-                            st.session_state.current_video_duration = get_video_duration(video_id)
-                        except:
-                            st.session_state.current_video_duration = 180
-                            
-                        st.rerun()
-                with col2:
-                    next_button = st.button("Next ⏭️")
-                    if next_button and st.session_state.current_track_index < len(st.session_state.current_playlist) - 1:
-                        st.session_state.current_track_index += 1
-                        next_track = st.session_state.current_playlist[st.session_state.current_track_index]
-                        video_id = extract_video_id(next_track["url"])
-                        st.session_state.current_video_id = video_id
-                        st.session_state.current_video_title = next_track["title"]
-                        
-                        # Reset tracking variables
-                        st.session_state.play_start_time = datetime.now()
-                        try:
-                            st.session_state.current_video_duration = get_video_duration(video_id)
-                        except:
-                            st.session_state.current_video_duration = 180
-                            
-                        st.rerun()
         
-        # Create tabs
-        tab1, tab2, tab3, tab4 = st.tabs(["Featured Playlists", "My Playlists", "ClassicsAI Channel", "Search"])
+        # Tabs for different sections
+        tab1, tab2, tab3, tab4 = st.tabs(["Featured Playlists", "My Playlists", "Channel Browser", "Search"])
         
         # Tab 1: Featured Playlists
         with tab1:
@@ -636,102 +522,87 @@ def main():
             featured_playlists = get_featured_playlists()
             
             for playlist_name, tracks in featured_playlists.items():
-                with st.expander(playlist_name):
-                    if tracks:
-                        if st.button(f"Play All: {playlist_name}", key=f"play_all_{playlist_name}"):
-                            st.session_state.current_playlist = tracks
-                            st.session_state.current_track_index = 0
-                            first_track = tracks[0]
-                            video_id = extract_video_id(first_track["url"])
-                            st.session_state.current_video_id = video_id
-                            st.session_state.current_video_title = first_track["title"]
-                            
-                            # Set up tracking for auto-advance
-                            st.session_state.play_start_time = datetime.now()
-                            try:
-                                st.session_state.current_video_duration = get_video_duration(video_id)
-                            except:
-                                st.session_state.current_video_duration = 180
-                            
-                            st.rerun()
-                        
-                        if st.button(f"Add to My Playlists: {playlist_name}", key=f"add_playlist_{playlist_name}"):
-                            # Create a new playlist with a unique name
-                            count = 1
-                            new_name = f"{playlist_name}"
-                            while new_name in st.session_state.user_playlists:
-                                new_name = f"{playlist_name} ({count})"
-                                count += 1
-                            
-                            st.session_state.user_playlists[new_name] = tracks.copy()
-                            save_playlists(st.session_state.user_playlists)
-                            st.success(f"Added '{new_name}' to your playlists!")
-                            st.rerun()
-                        
-                        for i, track in enumerate(tracks):
-                            col1, col2, col3 = st.columns([3, 1, 1])
-                            with col1:
-                                st.write(f"{i+1}. {track['title']}")
-                            with col2:
-                                if st.button("Play", key=f"play_{playlist_name}_{i}"):
-                                    video_id = extract_video_id(track["url"])
-                                    st.session_state.current_video_id = video_id
-                                    st.session_state.current_video_title = track["title"]
-                                    st.session_state.current_playlist = tracks
-                                    st.session_state.current_track_index = i
-                                    
-                                    # Set up tracking for auto-advance
-                                    st.session_state.play_start_time = datetime.now()
-                                    try:
-                                        st.session_state.current_video_duration = get_video_duration(video_id)
-                                    except:
-                                        st.session_state.current_video_duration = 180
-                                    
-                                    st.rerun()
-                            with col3:
-                                if st.button("Add to My Playlists", key=f"add_track_{playlist_name}_{i}"):
-                                    if not st.session_state.user_playlists:
-                                        # Create a new playlist if none exists
-                                        st.session_state.user_playlists["My Favorites"] = [track]
-                                        save_playlists(st.session_state.user_playlists)
-                                        st.success(f"Added to new 'My Favorites' playlist!")
-                                    else:
-                                        # Show dialog to select a playlist
-                                        st.session_state.temp_video = track
-                                        st.session_state.show_add_dialog = True
-                                    st.rerun()
-                    else:
-                        st.info("This playlist is empty")
+                with st.expander(playlist_name, expanded=False):
+                    if st.button(f"Play All: {playlist_name}", key=f"play_all_{playlist_name}"):
+                        st.session_state.current_playlist = tracks
+                        st.session_state.current_track_index = 0
+                        first_track = tracks[0]
+                        video_id = extract_video_id(first_track["url"])
+                        st.session_state.current_video_id = video_id
+                        st.session_state.current_video_title = first_track["title"]
+                        st.rerun()
+                    
+                    for i, track in enumerate(tracks):
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            st.write(f"{i+1}. {track['title']}")
+                        with col2:
+                            if st.button("Play", key=f"play_{playlist_name}_{i}"):
+                                video_id = extract_video_id(track["url"])
+                                st.session_state.current_video_id = video_id
+                                st.session_state.current_video_title = track["title"]
+                                st.session_state.current_playlist = tracks
+                                st.session_state.current_track_index = i
+                                st.rerun()
         
         # Tab 2: My Playlists
         with tab2:
             st.header("My Playlists")
             
-            # Create a new playlist form
-            with st.expander("Create a New Playlist"):
-                with st.form("create_playlist_form"):
-                    new_playlist_name = st.text_input("Playlist Name")
-                    submit_new = st.form_submit_button("Create")
+            # Create new playlist
+            with st.expander("Create New Playlist", expanded=False):
+                playlist_name = st.text_input("Playlist Name", key="new_playlist_name")
+                if st.button("Create Playlist"):
+                    if playlist_name and playlist_name not in st.session_state.user_playlists:
+                        st.session_state.user_playlists[playlist_name] = []
+                        save_playlists(st.session_state.user_playlists)
+                        st.success(f"Playlist '{playlist_name}' created!")
+                        st.rerun()
+                    elif not playlist_name:
+                        st.error("Please enter a playlist name")
+                    else:
+                        st.error(f"Playlist '{playlist_name}' already exists")
+            
+            # Add song to playlist
+            with st.expander("Add Song to Playlist", expanded=False):
+                if st.session_state.user_playlists:
+                    playlist_names = list(st.session_state.user_playlists.keys())
+                    selected_playlist = st.selectbox("Select Playlist", playlist_names, key="add_song_playlist")
                     
-                    if submit_new and new_playlist_name:
-                        if new_playlist_name in st.session_state.user_playlists:
-                            st.error("A playlist with this name already exists!")
+                    song_url = st.text_input("YouTube URL", key="add_song_url")
+                    song_title = st.text_input("Song Title", key="add_song_title")
+                    
+                    if st.button("Add Song"):
+                        if song_url and song_title:
+                            video_id = extract_video_id(song_url)
+                            if video_id:
+                                st.session_state.user_playlists[selected_playlist].append({
+                                    "url": song_url,
+                                    "title": song_title
+                                })
+                                save_playlists(st.session_state.user_playlists)
+                                st.success(f"Song added to '{selected_playlist}'!")
+                                st.rerun()
+                            else:
+                                st.error("Invalid YouTube URL")
                         else:
-                            st.session_state.user_playlists[new_playlist_name] = []
-                            save_playlists(st.session_state.user_playlists)
-                            st.success(f"Created playlist '{new_playlist_name}'!")
-                            st.rerun()
+                            st.error("Please enter both URL and title")
+                else:
+                    st.info("Create a playlist first")
             
             # Display user playlists
             if st.session_state.user_playlists:
                 for playlist_name, tracks in st.session_state.user_playlists.items():
-                    with st.expander(playlist_name):
-                        # Delete playlist button
-                        if st.button("Delete Playlist", key=f"delete_{playlist_name}"):
-                            del st.session_state.user_playlists[playlist_name]
-                            save_playlists(st.session_state.user_playlists)
-                            st.success(f"Deleted '{playlist_name}'!")
-                            st.rerun()
+                    with st.expander(playlist_name, expanded=False):
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            st.subheader(playlist_name)
+                        with col2:
+                            if st.button("Delete Playlist", key=f"delete_{playlist_name}"):
+                                del st.session_state.user_playlists[playlist_name]
+                                save_playlists(st.session_state.user_playlists)
+                                st.success(f"Playlist '{playlist_name}' deleted!")
+                                st.rerun()
                         
                         if tracks:
                             if st.button(f"Play All: {playlist_name}", key=f"play_all_user_{playlist_name}"):
@@ -741,14 +612,6 @@ def main():
                                 video_id = extract_video_id(first_track["url"])
                                 st.session_state.current_video_id = video_id
                                 st.session_state.current_video_title = first_track["title"]
-                                
-                                # Set up tracking for auto-advance
-                                st.session_state.play_start_time = datetime.now()
-                                try:
-                                    st.session_state.current_video_duration = get_video_duration(video_id)
-                                except:
-                                    st.session_state.current_video_duration = 180
-                                
                                 st.rerun()
                             
                             for i, track in enumerate(tracks):
@@ -762,14 +625,6 @@ def main():
                                         st.session_state.current_video_title = track["title"]
                                         st.session_state.current_playlist = tracks
                                         st.session_state.current_track_index = i
-                                        
-                                        # Set up tracking for auto-advance
-                                        st.session_state.play_start_time = datetime.now()
-                                        try:
-                                            st.session_state.current_video_duration = get_video_duration(video_id)
-                                        except:
-                                            st.session_state.current_video_duration = 180
-                                        
                                         st.rerun()
                                 with col3:
                                     if st.button("Remove", key=f"remove_{playlist_name}_{i}"):
@@ -809,7 +664,7 @@ def main():
                             st.markdown(f"**{title}**")
                             st.write(f"Published: {published_at}")
                             
-                            btn_col1, btn_col2 = st.columns(2)
+                            btn_col1, btn_col2, btn_col3 = st.columns(3)
                             with btn_col1:
                                 if st.button("Play", key=f"play_channel_{i}"):
                                     st.session_state.current_video_id = video_id
@@ -818,18 +673,8 @@ def main():
                             
                             with btn_col2:
                                 # Add to playlist button
-                                if st.button("Add to Playlist", key=f"add_channel_{i}"):
-                                    if not st.session_state.user_playlists:
-                                        # Create default playlist if user has none
-                                        st.session_state.user_playlists["My Favorites"] = [{
-                                            "url": f"https://www.youtube.com/watch?v={video_id}",
-                                            "title": title
-                                        }]
-                                        save_playlists(st.session_state.user_playlists)
-                                        st.success(f"Added to new 'My Favorites' playlist!")
-                                        st.rerun()
-                                    else:
-                                        # Store the video info and show dialog
+                                if st.session_state.user_playlists:
+                                    if st.button("Add to Playlist", key=f"add_channel_{i}"):
                                         st.session_state.temp_video = {
                                             "url": f"https://www.youtube.com/watch?v={video_id}",
                                             "title": title
@@ -844,6 +689,27 @@ def main():
                         if st.button("Load More", key="load_more_channel"):
                             st.session_state.channel_page_token = next_page_token
                             st.rerun()
+
+                    # Dialog for adding to playlist
+                    if "show_add_dialog" in st.session_state and st.session_state.show_add_dialog:
+                        with st.form("add_to_playlist_form"):
+                            st.subheader("Add to Playlist")
+                            playlist_names = list(st.session_state.user_playlists.keys())
+                            selected_playlist = st.selectbox("Select Playlist", playlist_names)
+                            
+                            submitted = st.form_submit_button("Add")
+                            cancel = st.form_submit_button("Cancel")
+                            
+                            if submitted:
+                                st.session_state.user_playlists[selected_playlist].append(st.session_state.temp_video)
+                                save_playlists(st.session_state.user_playlists)
+                                st.success(f"Added to '{selected_playlist}'!")
+                                st.session_state.show_add_dialog = False
+                                st.rerun()
+                            
+                            if cancel:
+                                st.session_state.show_add_dialog = False
+                                st.rerun()
                 else:
                     st.info("No videos found in the channel")
             else:
@@ -886,18 +752,8 @@ def main():
                                 
                                 with btn_col2:
                                     # Add to playlist button
-                                    if st.button("Add to Playlist", key=f"add_search_{i}"):
-                                        if not st.session_state.user_playlists:
-                                            # Create default playlist if user has none
-                                            st.session_state.user_playlists["My Favorites"] = [{
-                                                "url": f"https://www.youtube.com/watch?v={video_id}",
-                                                "title": title
-                                            }]
-                                            save_playlists(st.session_state.user_playlists)
-                                            st.success(f"Added to new 'My Favorites' playlist!")
-                                            st.rerun()
-                                        else:
-                                            # Store the video info and show dialog
+                                    if st.session_state.user_playlists:
+                                        if st.button("Add to Playlist", key=f"add_search_{i}"):
                                             st.session_state.temp_video = {
                                                 "url": f"https://www.youtube.com/watch?v={video_id}",
                                                 "title": title
@@ -910,45 +766,6 @@ def main():
                         st.info("No results found")
             else:
                 st.error("YouTube API not initialized. Please check your API key.")
-        
-        # A single, centralized "Add to Playlist" dialog that appears for any tab
-        # This is outside of all tabs to prevent form duplication issues
-        if st.session_state.show_add_dialog and st.session_state.temp_video:
-            st.sidebar.title("Add to Playlist")
-            
-            # Option to create a new playlist
-            create_new = st.sidebar.checkbox("Create a new playlist")
-            
-            if create_new:
-                new_playlist_name = st.sidebar.text_input("New Playlist Name")
-                add_button = st.sidebar.button("Create and Add")
-                if add_button and new_playlist_name:
-                    if new_playlist_name in st.session_state.user_playlists:
-                        st.sidebar.error("A playlist with this name already exists!")
-                    else:
-                        st.session_state.user_playlists[new_playlist_name] = [st.session_state.temp_video]
-                        save_playlists(st.session_state.user_playlists)
-                        st.sidebar.success(f"Created new playlist '{new_playlist_name}' and added track!")
-                        st.session_state.show_add_dialog = False
-                        st.session_state.temp_video = None
-                        st.rerun()
-            else:
-                playlist_names = list(st.session_state.user_playlists.keys())
-                selected_playlist = st.sidebar.selectbox("Select Playlist", playlist_names)
-                add_button = st.sidebar.button("Add to Playlist")
-                if add_button:
-                    st.session_state.user_playlists[selected_playlist].append(st.session_state.temp_video)
-                    save_playlists(st.session_state.user_playlists)
-                    st.sidebar.success(f"Added to '{selected_playlist}'!")
-                    st.session_state.show_add_dialog = False
-                    st.session_state.temp_video = None
-                    st.rerun()
-            
-            # Cancel button
-            if st.sidebar.button("Cancel"):
-                st.session_state.show_add_dialog = False
-                st.session_state.temp_video = None
-                st.rerun()
 
 if __name__ == "__main__":
     main() 
